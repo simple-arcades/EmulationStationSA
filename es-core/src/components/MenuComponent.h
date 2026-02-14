@@ -6,6 +6,7 @@
 #include "components/ComponentList.h"
 #include "components/NinePatchComponent.h"
 #include "components/TextComponent.h"
+#include "SAStyle.h"
 #include "utils/StringUtil.h"
 
 class ButtonComponent;
@@ -19,7 +20,7 @@ std::shared_ptr<ImageComponent> makeArrow(Window* window);
 class MenuComponent : public GuiComponent
 {
 public:
-	MenuComponent(Window* window, const char* title, const std::shared_ptr<Font>& titleFont = Font::get(FONT_SIZE_LARGE));
+	MenuComponent(Window* window, const char* title, const std::shared_ptr<Font>& titleFont = saFont(FONT_SIZE_LARGE));
 
 	void onSizeChanged() override;
 
@@ -28,7 +29,7 @@ public:
 	inline void addWithLabel(const std::string& label, const std::shared_ptr<GuiComponent>& comp, bool setCursorHere = false, bool invert_when_selected = true)
 	{
 		ComponentListRow row;
-		row.addElement(std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(label), Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+		row.addElement(std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(label), saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 		row.addElement(comp, false, invert_when_selected);
 		addRow(row, setCursorHere);
 	}

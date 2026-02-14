@@ -58,6 +58,12 @@ private:
 
 	bool		mVideoPlaying;
 
+	// Debounce timer: delays media loading until cursor is idle.
+	// Prevents video/image load pile-up during fast scrolling.
+	// Value in ms. -1 = no pending load. >0 = counting down.
+	int			mMediaDebounceTimer;
+	static const int MEDIA_DEBOUNCE_MS = 150;
+
 };
 
 #endif // ES_APP_VIEWS_GAME_LIST_VIDEO_GAME_LIST_VIEW_H

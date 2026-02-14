@@ -1,11 +1,12 @@
 #include "guis/GuiInfoPopup.h"
+#include "SAStyle.h"
 
 #include "components/ComponentGrid.h"
 #include "components/NinePatchComponent.h"
 #include "components/TextComponent.h"
 #include <SDL_timer.h>
 
-GuiInfoPopup::GuiInfoPopup(Window* window, std::string message, int duration, int fadein, int fadeout) :
+GuiInfoPopup::GuiInfoPopup(Window* window, std::string message, int duration, int fadein, int fadeout, PopupPosition pos) :
 	GuiComponent(window), mMessage(message), mDuration(duration), mFadein(fadein), mFadeout(fadeout), running(true)
 {
 	mFrame = new NinePatchComponent(window);
@@ -14,8 +15,8 @@ GuiInfoPopup::GuiInfoPopup(Window* window, std::string message, int duration, in
 
 	std::shared_ptr<TextComponent> s = std::make_shared<TextComponent>(mWindow,
 		"",
-		Font::get(FONT_SIZE_MINI),
-		0x444444FF,
+		saFont(FONT_SIZE_MINI),
+		SA_POPUP_TEXT_COLOR,
 		ALIGN_CENTER);
 
 	// we do this to force the text container to resize and return an actual expected popup size
@@ -39,8 +40,34 @@ GuiInfoPopup::GuiInfoPopup(Window* window, std::string message, int duration, in
 	mSize[0] = mSize.x() + paddingX;
 	mSize[1] = mSize.y() + paddingY;
 
-	float posX = Renderer::getScreenWidth()*0.5f - mSize.x()*0.5f;
-	float posY = Renderer::getScreenHeight() * 0.02f;
+	float margin = Renderer::getScreenHeight() * 0.02f;
+	float posX = 0.0f;
+	float posY = 0.0f;
+
+	switch (pos)
+	{
+		case POPUP_TOP_RIGHT:
+			posX = Renderer::getScreenWidth() - mSize.x() - margin;
+			posY = margin;
+			break;
+		case POPUP_BOTTOM_CENTER:
+			posX = Renderer::getScreenWidth() * 0.5f - mSize.x() * 0.5f;
+			posY = Renderer::getScreenHeight() - mSize.y() - margin;
+			break;
+		case POPUP_BOTTOM_LEFT:
+			posX = margin;
+			posY = Renderer::getScreenHeight() - mSize.y() - margin;
+			break;
+		case POPUP_BOTTOM_RIGHT:
+			posX = Renderer::getScreenWidth() - mSize.x() - margin;
+			posY = Renderer::getScreenHeight() - mSize.y() - margin;
+			break;
+		case POPUP_TOP_CENTER:
+		default:
+			posX = Renderer::getScreenWidth() * 0.5f - mSize.x() * 0.5f;
+			posY = margin;
+			break;
+	}
 
 	setPosition(posX, posY, 0);
 

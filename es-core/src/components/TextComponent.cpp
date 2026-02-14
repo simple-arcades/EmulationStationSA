@@ -1,11 +1,12 @@
 #include "components/TextComponent.h"
+#include "SAStyle.h"
 
 #include "utils/StringUtil.h"
 #include "Log.h"
 #include "Settings.h"
 
 TextComponent::TextComponent(Window* window) : GuiComponent(window),
-	mFont(Font::get(FONT_SIZE_MEDIUM)), mUppercase(false), mColor(0x000000FF), mAutoCalcExtent(true, true),
+	mFont(saFont(FONT_SIZE_MEDIUM)), mUppercase(false), mColor(0x000000FF), mAutoCalcExtent(true, true),
 	mHorizontalAlignment(ALIGN_LEFT), mVerticalAlignment(ALIGN_CENTER), mLineSpacing(1.5f), mBgColor(0),
 	mRenderBackground(false)
 {

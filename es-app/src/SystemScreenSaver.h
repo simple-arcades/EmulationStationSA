@@ -34,6 +34,7 @@ private:
 	void pickRandomVideo(std::string& path, bool keepSame = false);
 	void pickRandomGameListImage(std::string& path, bool keepSame = false);
 	void pickRandomCustomMedia(std::string& path);
+	void pickRandomSimpleArcadesVideo(std::string& path);
 	void setVideoScreensaver(std::string& path);
 	void setImageScreensaver(std::string& path);
 	bool isFileVideo(std::string& path);
@@ -67,6 +68,7 @@ private:
 	bool			mStopBackgroundAudio;
 	std::vector<FileData*>	mAllFiles;
 	std::vector<std::string> mCustomMediaFiles;
+	std::vector<std::string> mSimpleArcadesVideoFiles;
 	int			mAllFilesSize;
 	std::thread*		mThread;
 	bool			mExit;

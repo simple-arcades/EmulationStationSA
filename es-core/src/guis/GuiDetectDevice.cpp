@@ -1,4 +1,6 @@
 #include "guis/GuiDetectDevice.h"
+#include "SAStyle.h"
+#include <SDL_joystick.h>
 
 #include "components/TextComponent.h"
 #include "guis/GuiInputConfig.h"
@@ -9,6 +11,13 @@
 #include "Window.h"
 
 #define HOLD_TIME 1000
+
+static bool isBlacklistedDeviceName(const std::string& name)
+{
+	// Treat any DragonRise device as non-configurable (built-ins + extra DragonRise controllers)
+	const std::string upper = Utils::String::toUpper(name);
+	return (upper.find("DRAGONRISE") != std::string::npos);
+}
 
 GuiDetectDevice::GuiDetectDevice(Window* window, bool firstRun, const std::function<void()>& doneCallback) : GuiComponent(window), mFirstRun(firstRun),
 	mBackground(window, ":/frame.png"), mGrid(window, Vector2i(1, 5))
@@ -22,30 +31,53 @@ GuiDetectDevice::GuiDetectDevice(Window* window, bool firstRun, const std::funct
 
 	// title
 	mTitle = std::make_shared<TextComponent>(mWindow, firstRun ? "WELCOME" : "CONFIGURE INPUT",
-		Font::get(FONT_SIZE_LARGE), 0x555555FF, ALIGN_CENTER);
+		saFont(FONT_SIZE_LARGE), SA_TITLE_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mTitle, Vector2i(0, 0), false, true, Vector2i(1, 1), GridFlags::BORDER_BOTTOM);
 
 	// device info
 	std::stringstream deviceInfo;
-	int numDevices = InputManager::getInstance()->getNumJoysticks();
+
+	// Count only non-blacklisted devices
+	int numDevices = 0;
+	const int total = InputManager::getInstance()->getNumJoysticks();
+	for(int i = 0; i < total; i++)
+	{
+		const char* nm = SDL_JoystickNameForIndex(i);
+		if(nm && isBlacklistedDeviceName(nm))
+			continue;
+
+		numDevices++;
+	}
 
 	if(numDevices > 0)
-		deviceInfo << numDevices << " GAMEPAD" << (numDevices > 1 ? "S" : "") << " DETECTED";
+		deviceInfo << numDevices << " EXTERNAL GAMEPAD" << (numDevices > 1 ? "S" : "") << " DETECTED";
 	else
-		deviceInfo << "NO GAMEPADS DETECTED";
-	mDeviceInfo = std::make_shared<TextComponent>(mWindow, deviceInfo.str(), Font::get(FONT_SIZE_SMALL), 0x999999FF, ALIGN_CENTER);
+		deviceInfo << "NO EXTERNAL GAMEPADS DETECTED";
+	
+	mDeviceInfo = std::make_shared<TextComponent>(mWindow, deviceInfo.str(), saFont(FONT_SIZE_SMALL), SA_SUBTITLE_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mDeviceInfo, Vector2i(0, 1), false, true);
 
 	// message
-	mMsg1 = std::make_shared<TextComponent>(mWindow, "HOLD A BUTTON ON YOUR DEVICE TO CONFIGURE IT.", Font::get(FONT_SIZE_SMALL), 0x777777FF, ALIGN_CENTER);
+	std::string msg1str =
+		(!firstRun && numDevices == 0)
+			? "RETURN TO THE MAIN MENU, CONNECT YOUR CONTROLLER THEN TRY AGAIN."
+			: "HOLD A BUTTON ON YOUR DEVICE TO CONFIGURE IT.";
+
+	mMsg1 = std::make_shared<TextComponent>(
+		mWindow, msg1str,
+		saFont(FONT_SIZE_SMALL), SA_TEXT_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mMsg1, Vector2i(0, 2), false, true);
 
-	const char* msg2str = firstRun ? "PRESS F4 TO QUIT AT ANY TIME." : "PRESS ESC TO CANCEL.";
-	mMsg2 = std::make_shared<TextComponent>(mWindow, msg2str, Font::get(FONT_SIZE_SMALL), 0x777777FF, ALIGN_CENTER);
+	const char* msg2str = firstRun ? "PRESS F4 TO QUIT AT ANY TIME."
+		: (numDevices > 0 ? "PRESS BACK (OR ESC) TO CANCEL." : "PRESS BACK (OR ESC) TO RETURN.");
+
+	mMsg2 = std::make_shared<TextComponent>(
+		mWindow, msg2str,
+		saFont(FONT_SIZE_SMALL), SA_TEXT_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mMsg2, Vector2i(0, 3), false, true);
 
 	// currently held device
-	mDeviceHeld = std::make_shared<TextComponent>(mWindow, "", Font::get(FONT_SIZE_MEDIUM), 0xFFFFFFFF, ALIGN_CENTER);
+	mDeviceHeld = std::make_shared<TextComponent>(mWindow, "", saFont(FONT_SIZE_MEDIUM), 0xFFFFFFFF, ALIGN_CENTER);
 	mGrid.setEntry(mDeviceHeld, Vector2i(0, 4), false, true);
 
 	setSize(Renderer::getScreenWidth() * 0.6f, Renderer::getScreenHeight() * 0.5f);
@@ -67,16 +99,38 @@ void GuiDetectDevice::onSizeChanged()
 
 bool GuiDetectDevice::input(InputConfig* config, Input input)
 {
-	PowerSaver::pause();
+    PowerSaver::pause();
 
-	if(!mFirstRun && input.device == DEVICE_KEYBOARD && input.type == TYPE_KEY && input.value && input.id == SDLK_ESCAPE)
-	{
-		// cancel configuring
-		PowerSaver::resume();
-		delete this;
-		return true;
-	}
+    if(!mFirstRun)
+    {
+        // Keyboard ESC cancels
+        if(input.device == DEVICE_KEYBOARD && input.type == TYPE_KEY && input.value && input.id == SDLK_ESCAPE)
+        {
+            PowerSaver::resume();
+            delete this;
+            return true;
+        }
 
+        // Controller BACK cancels
+        if(config && config->getDeviceId() != DEVICE_KEYBOARD && input.value)
+        {
+            const bool isBL = isBlacklistedDeviceName(config->getDeviceName());
+
+            // Normal controllers: "b" cancels
+            // Blacklisted built-ins: allow "a" OR "b" to cancel
+            if(config->isMappedTo("b", input) || (isBL && config->isMappedTo("a", input)))
+            {
+                PowerSaver::resume();
+                delete this;
+                return true;
+            }
+        }
+    }
+
+    // NOW ignore blacklisted devices so they can't be configured
+    if(config && isBlacklistedDeviceName(config->getDeviceName()))
+        return true;
+		
 	if(input.type == TYPE_BUTTON || input.type == TYPE_KEY ||input.type == TYPE_CEC_BUTTON)
 	{
 		if(input.value && mHoldingConfig == NULL)

@@ -1,6 +1,7 @@
 #include "components/MenuComponent.h"
 
 #include "components/ButtonComponent.h"
+#include "SAStyle.h"
 
 #define BUTTON_GRID_VERT_PADDING 32
 #define BUTTON_GRID_HORIZ_PADDING 10
@@ -18,7 +19,7 @@ MenuComponent::MenuComponent(Window* window, const char* title, const std::share
 	// set up title
 	mTitle = std::make_shared<TextComponent>(mWindow);
 	mTitle->setHorizontalAlignment(ALIGN_CENTER);
-	mTitle->setColor(0x555555FF);
+	mTitle->setColor(SA_TITLE_COLOR);
 	setTitle(title, titleFont);
 	mGrid.setEntry(mTitle, Vector2i(0, 0), false);
 
@@ -40,7 +41,7 @@ void MenuComponent::setTitle(const char* title, const std::shared_ptr<Font>& fon
 
 float MenuComponent::getButtonGridHeight() const
 {
-	return (mButtonGrid ? mButtonGrid->getSize().y() : Font::get(FONT_SIZE_MEDIUM)->getHeight() + BUTTON_GRID_VERT_PADDING);
+	return (mButtonGrid ? mButtonGrid->getSize().y() : saFont(FONT_SIZE_MEDIUM)->getHeight() + BUTTON_GRID_VERT_PADDING);
 }
 
 void MenuComponent::updateSize()
@@ -128,6 +129,6 @@ std::shared_ptr<ImageComponent> makeArrow(Window* window)
 {
 	auto bracket = std::make_shared<ImageComponent>(window);
 	bracket->setImage(":/arrow.svg");
-	bracket->setResize(0, Math::round(Font::get(FONT_SIZE_MEDIUM)->getLetterHeight()));
+	bracket->setResize(0, Math::round(saFont(FONT_SIZE_MEDIUM)->getLetterHeight()));
 	return bracket;
 }

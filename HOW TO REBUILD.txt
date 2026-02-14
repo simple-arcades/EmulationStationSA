@@ -1,0 +1,15 @@
+date
+find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "CMakeLists.txt" \) -exec touch {} +
+rm -rf build
+docker run --rm --platform linux/arm/v7   --user "$(id -u):$(id -g)"   -v "$(pwd):/src" -w /src   es-omx-builder:1 bash -lc '
+    set -e
+    mkdir -p build
+    cd build
+    cmake .. \
+      -DUSE_MESA_GLES=On \
+      -DRPI=On \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_FLAGS="-D_OMX_" \
+      -DCMAKE_CXX_FLAGS="-D_OMX_"
+    make -j2
+  '

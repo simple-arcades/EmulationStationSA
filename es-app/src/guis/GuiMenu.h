@@ -22,6 +22,7 @@ private:
 	void addVersionInfo();
 	void openCollectionSystemSettings();
 	void openConfigInput();
+	void openDeleteControllerProfile();
 	void openOtherSettings();
 	void openQuitMenu();
 	void openScraperSettings();

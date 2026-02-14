@@ -5,6 +5,8 @@
 #include "animations/LaunchAnimation.h"
 #include "animations/MoveCameraAnimation.h"
 #include "guis/GuiMenu.h"
+#include "guis/GuiInfoPopup.h"
+#include "guis/GuiMusicPopup.h"
 #include "views/gamelist/DetailedGameListView.h"
 #include "views/gamelist/IGameListView.h"
 #include "views/gamelist/GridGameListView.h"
@@ -17,6 +19,7 @@
 #include "Settings.h"
 #include "SystemData.h"
 #include "Window.h"
+#include "AudioManager.h"
 
 ViewController* ViewController::sInstance = NULL;
 
@@ -77,7 +80,7 @@ void ViewController::goToStart()
 
 void ViewController::ReloadAndGoToStart()
 {
-	mWindow->renderLoadingScreen("Loading...");
+	mWindow->renderLoadingScreen(mWindow->getRestartText("Loading..."));
 	ViewController::get()->reloadAll();
 	ViewController::get()->goToStart();
 }
@@ -438,6 +441,24 @@ bool ViewController::input(InputConfig* config, Input input)
 		return true;
 	}
 
+	
+	// Music v2: Global track skip -- triggers ONLY, disabled when any menu/dialog is open.
+	if (input.value != 0 && SimpleArcadesMusicManager::getInstance().isEnabled()
+		&& mWindow->getGuiStackSize() <= 1)
+	{
+		if (config->isMappedTo("righttrigger", input))
+		{
+			SimpleArcadesMusicManager::getInstance().nextTrack();
+			return true;
+		}
+
+		if (config->isMappedTo("lefttrigger", input))
+		{
+			SimpleArcadesMusicManager::getInstance().prevTrack();
+			return true;
+		}
+	}
+
 	if(UIModeController::getInstance()->listen(config, input))  // check if UI mode has changed due to passphrase completion
 	{
 		return true;
@@ -454,6 +475,16 @@ void ViewController::update(int deltaTime)
 	if(mCurrentView)
 	{
 		mCurrentView->update(deltaTime);
+	}
+
+	// Music v2: Poll for track popup.
+	{
+		TrackDisplayInfo info = SimpleArcadesMusicManager::getInstance().consumeNewTrackInfo();
+		if (info.valid)
+		{
+			mWindow->setInfoPopup(new GuiMusicPopup(mWindow,
+				info.soundtrack, info.trackName, info.coverPath, 4000));
+		}
 	}
 
 	updateSelf(deltaTime);
@@ -505,15 +536,17 @@ void ViewController::preload()
 	int max = SystemData::sSystemVector.size() + 1;
 
 	bool splash = Settings::getInstance()->getBool("SplashScreen");
+	std::string loadText = mWindow->getRestartText("Almost ready ...");
+
 	if (splash)
-		mWindow->renderLoadingScreen("Preloading UI", (float)i / (float)max);
+		mWindow->renderLoadingScreen(loadText, (float)i / (float)max);
 
 	for(auto it = SystemData::sSystemVector.cbegin(); it != SystemData::sSystemVector.cend(); it++)
 	{
 		if (splash)
 		{
 			i++;
-			mWindow->renderLoadingScreen("Preloading UI", (float)i / (float)max);
+			mWindow->renderLoadingScreen(loadText, (float)i / (float)max);
 		}
 
 		(*it)->getIndex()->resetFilters();

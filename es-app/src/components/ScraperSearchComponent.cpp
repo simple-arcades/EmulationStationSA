@@ -1,4 +1,5 @@
 #include "components/ScraperSearchComponent.h"
+#include "SAStyle.h"
 
 #include "components/ComponentList.h"
 #include "components/DateTimeEditComponent.h"
@@ -26,7 +27,7 @@ ScraperSearchComponent::ScraperSearchComponent(Window* window, SearchType type) 
 	mGrid.setEntry(std::make_shared<GuiComponent>(mWindow), Vector2i(0, 0), false, false, Vector2i(1, 3), GridFlags::BORDER_TOP | GridFlags::BORDER_BOTTOM);
 
 	// selected result name
-	mResultName = std::make_shared<TextComponent>(mWindow, "Result name", Font::get(FONT_SIZE_MEDIUM), 0x777777FF);
+	mResultName = std::make_shared<TextComponent>(mWindow, "Result name", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR);
 
 	// selected result thumbnail
 	mResultThumbnail = std::make_shared<ImageComponent>(mWindow);
@@ -34,13 +35,13 @@ ScraperSearchComponent::ScraperSearchComponent(Window* window, SearchType type) 
 
 	// selected result desc + container
 	mDescContainer = std::make_shared<ScrollableContainer>(mWindow);
-	mResultDesc = std::make_shared<TextComponent>(mWindow, "Result desc", Font::get(FONT_SIZE_SMALL), 0x777777FF);
+	mResultDesc = std::make_shared<TextComponent>(mWindow, "Result desc", saFont(FONT_SIZE_SMALL), SA_TEXT_COLOR);
 	mDescContainer->addChild(mResultDesc.get());
 	mDescContainer->setAutoScroll(true);
 
 	// metadata
-	auto font = Font::get(FONT_SIZE_SMALL); // this gets replaced in onSizeChanged() so its just a placeholder
-	const unsigned int mdColor = 0x777777FF;
+	auto font = saFont(FONT_SIZE_SMALL); // this gets replaced in onSizeChanged() so its just a placeholder
+	const unsigned int mdColor = SA_TEXT_COLOR;
 	const unsigned int mdLblColor = 0x666666FF;
 	mMD_Rating = std::make_shared<RatingComponent>(mWindow);
 	mMD_ReleaseDate = std::make_shared<DateTimeEditComponent>(mWindow);
@@ -131,8 +132,8 @@ void ScraperSearchComponent::resizeMetadata()
 	if(mMD_Grid->getSize().y() > mMD_Pairs.size())
 	{
 		const int fontHeight = (int)(mMD_Grid->getSize().y() / mMD_Pairs.size() * 0.8f);
-		auto fontLbl = Font::get(fontHeight, FONT_PATH_REGULAR);
-		auto fontComp = Font::get(fontHeight, FONT_PATH_LIGHT);
+		auto fontLbl = saFont(fontHeight);
+		auto fontComp = saFontLight(fontHeight);
 
 		// update label fonts
 		float maxLblWidth = 0;
@@ -163,7 +164,7 @@ void ScraperSearchComponent::resizeMetadata()
 		mMD_Grid->onSizeChanged();
 
 		// make result font follow label font
-		mResultDesc->setFont(Font::get(fontHeight, FONT_PATH_REGULAR));
+		mResultDesc->setFont(saFont(fontHeight));
 	}
 }
 
@@ -227,8 +228,8 @@ void ScraperSearchComponent::onSearchDone(const std::vector<ScraperSearchResult>
 
 	mScraperResults = results;
 
-	auto font = Font::get(FONT_SIZE_MEDIUM);
-	unsigned int color = 0x777777FF;
+	auto font = saFont(FONT_SIZE_MEDIUM);
+	unsigned int color = SA_TEXT_COLOR;
 	if(results.empty())
 	{
 		// Check if the scraper used is still valid

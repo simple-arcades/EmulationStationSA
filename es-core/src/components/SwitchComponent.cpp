@@ -1,11 +1,12 @@
 #include "SwitchComponent.h"
 
 #include "resources/Font.h"
+#include "SAStyle.h"
 
 SwitchComponent::SwitchComponent(Window* window, bool state) : GuiComponent(window), mImage(window), mState(state)
 {
 	mImage.setImage(":/off.svg");
-	mImage.setResize(0, Font::get(FONT_SIZE_MEDIUM)->getLetterHeight());
+	mImage.setResize(0, saFont(FONT_SIZE_MEDIUM)->getLetterHeight() * 1.5f);
 	mSize = mImage.getSize();
 }
 

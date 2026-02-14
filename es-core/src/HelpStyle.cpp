@@ -1,4 +1,5 @@
 #include "HelpStyle.h"
+#include "SAStyle.h"
 
 #include "resources/Font.h"
 
@@ -6,11 +7,11 @@ HelpStyle::HelpStyle()
 {
 	position = Vector2f(Renderer::getScreenWidth() * 0.012f, Renderer::getScreenHeight() * 0.9515f);
 	origin = Vector2f(0.0f, 0.0f);
-	iconColor = 0x777777FF;
-	textColor = 0x777777FF;
+	iconColor = SA_HELP_ICON_COLOR;
+	textColor = SA_HELP_TEXT_COLOR;
 
 	if(FONT_SIZE_SMALL != 0)
-		font = Font::get(FONT_SIZE_SMALL);
+		font = saFont(FONT_SIZE_SMALL);
 	else
 		font = nullptr;
 }

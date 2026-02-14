@@ -1,4 +1,5 @@
 #include "SystemScreenSaver.h"
+#include "SimpleArcadesScreensaverUtil.h"
 #include "components/TextListComponent.h"
 
 #ifdef _OMX_
@@ -22,6 +23,9 @@
 #include <random>
 #include <time.h>
 #include <unordered_map>
+#include <unordered_set>
+#include <cstdlib>
+#include <fstream>
 
 #define FADE_TIME 			300
 
@@ -71,7 +75,11 @@ bool SystemScreenSaver::inputDuringScreensaver(InputConfig* config, Input input)
 {
 	bool input_consumed = false;
 	std::string screensaver_type = Settings::getInstance()->getString("ScreenSaverBehavior");
-	bool is_media_screensaver = screensaver_type == "random video" || screensaver_type == "slideshow";
+	bool is_media_screensaver =
+		screensaver_type == "random video" ||
+		screensaver_type == "slideshow" ||
+		screensaver_type == "custom folder video";
+
 
 	if (!mWindow->isSleeping() && is_media_screensaver)
 	{
@@ -83,7 +91,9 @@ bool SystemScreenSaver::inputDuringScreensaver(InputConfig* config, Input input)
 		bool is_favorite_input = config->isMappedLike("y", input);
 		bool is_start_input = config->isMappedTo("start", input);
 		bool is_select_game_input =  config->isMappedTo("a", input);
-		bool use_gamelistmedia = screensaver_type == "random video" || !Settings::getInstance()->getBool("SlideshowScreenSaverCustomMediaSource");
+		bool use_gamelistmedia =
+			screensaver_type == "random video" ||
+			(screensaver_type == "slideshow" && !Settings::getInstance()->getBool("SlideshowScreenSaverCustomMediaSource"));
 
 		if (input.value != 0)
 		{
@@ -250,6 +260,38 @@ void SystemScreenSaver::startScreenSaver(SystemData* system)
 			return;
 		}
 	}
+	else if (!mVideoScreensaver && (screensaver_behavior == "custom folder video"))
+	{
+		// Configure to fade out the windows, Skip Fading if Instant mode
+		mState = PowerSaver::getMode() == PowerSaver::INSTANT
+			? STATE_SCREENSAVER_ACTIVE
+			: STATE_FADE_OUT_WINDOW;
+
+		mSwapTimeout = Settings::getInstance()->getInt("ScreenSaverSwapVideoTimeout");
+		mOpacity = 0.0f;
+
+		// Always resync with disk on each screensaver start so new videos get picked up immediately
+		mSimpleArcadesVideoFiles.clear();
+	
+		std::string path = "";
+		pickRandomSimpleArcadesVideo(path);
+
+		int retry = 200;
+		while (retry > 0 && (path.empty() || !Utils::FileSystem::exists(path)))
+		{
+			retry--;
+			pickRandomSimpleArcadesVideo(path);
+		}
+
+		if (!path.empty() && Utils::FileSystem::exists(path))
+		{
+			// Custom folder videos are not tied to the gamelist
+			mCurrentGame = NULL;
+			setVideoScreensaver(path);
+			return;
+		}
+	}
+
 	else if (screensaver_behavior == "slideshow")
 	{
 		// Configure to fade out the windows, Skip Fading if Instant mode
@@ -323,6 +365,8 @@ void SystemScreenSaver::stopScreenSaver(bool toResume)
 		mPreviousGame = NULL;
 		mAllFiles.clear();
 		mSystem = NULL;
+		mSimpleArcadesVideoFiles.clear();
+
 	}
 
 	// Exit the indexing thread in case it's running. Check if thread still exists.
@@ -343,7 +387,8 @@ void SystemScreenSaver::stopScreenSaver(bool toResume)
 void SystemScreenSaver::renderScreenSaver()
 {
 	std::string screensaver_behavior = Settings::getInstance()->getString("ScreenSaverBehavior");
-	if (mVideoScreensaver && (screensaver_behavior == "random video" || screensaver_behavior == "slideshow"))
+	if (mVideoScreensaver && (screensaver_behavior == "random video" || screensaver_behavior == "slideshow" || screensaver_behavior == "custom folder video"))
+
 	{
 		setBackground();
 
@@ -522,6 +567,29 @@ void SystemScreenSaver::pickRandomCustomMedia(std::string& path)
 	mCustomMediaFiles.pop_back();
 }
 
+void SystemScreenSaver::pickRandomSimpleArcadesVideo(std::string& path)
+{
+	// Always rebuild the list when empty (startScreenSaver clears it each run)
+	if (mSimpleArcadesVideoFiles.empty())
+	{
+		// IMPORTANT:
+		// Runtime screensaver must NOT write/normalize allowlist.cfg.
+		// The Gallery is the only place that writes the allowlist.
+		mSimpleArcadesVideoFiles = SimpleArcadesScreensaverUtil::syncAndGetEnabledVideos();
+
+		if (mSimpleArcadesVideoFiles.empty())
+		{
+			LOG(LogError) << "Custom Folder Video Screensaver - No enabled video files found under: "
+				<< SimpleArcadesScreensaverUtil::getRootDir();
+			return;
+		}
+
+		std::shuffle(std::begin(mSimpleArcadesVideoFiles), std::end(mSimpleArcadesVideoFiles), SystemData::sURNG);
+	}
+
+	path = mSimpleArcadesVideoFiles.back();
+	mSimpleArcadesVideoFiles.pop_back();
+}
 
 std::vector<std::string> SystemScreenSaver::getCustomMediaFiles(const std::string &mediaDir) {
 	std::string imageFilter = Settings::getInstance()->getString("SlideshowScreenSaverImageFilter");

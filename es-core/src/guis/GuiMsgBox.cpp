@@ -1,4 +1,5 @@
 #include "guis/GuiMsgBox.h"
+#include "SAStyle.h"
 
 #include "components/ButtonComponent.h"
 #include "components/MenuComponent.h"
@@ -14,7 +15,7 @@ GuiMsgBox::GuiMsgBox(Window* window, const std::string& text,
 	float width = Renderer::getScreenWidth() * 0.6f; // max width
 	float minWidth = Renderer::getScreenWidth() * 0.3f; // minimum width
 
-	mMsg = std::make_shared<TextComponent>(mWindow, text, Font::get(FONT_SIZE_MEDIUM), 0x777777FF, ALIGN_CENTER);
+	mMsg = std::make_shared<TextComponent>(mWindow, text, saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mMsg, Vector2i(0, 0), false, false);
 
 	// create the buttons
@@ -53,7 +54,7 @@ GuiMsgBox::GuiMsgBox(Window* window, const std::string& text,
 
 	// now that we know width, we can find height
 	mMsg->setSize(width, 0); // mMsg->getSize.y() now returns the proper length
-	const float msgHeight = Math::max(Font::get(FONT_SIZE_LARGE)->getHeight(), mMsg->getSize().y()*1.225f);
+	const float msgHeight = Math::max(saFont(FONT_SIZE_LARGE)->getHeight(), mMsg->getSize().y()*1.225f);
 	setSize(width + HORIZONTAL_PADDING_PX*2, msgHeight + mButtonGrid->getSize().y());
 
 	// center for good measure

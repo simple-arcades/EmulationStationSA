@@ -5,6 +5,7 @@
 #include "GuiComponent.h"
 #include "Log.h"
 #include "Window.h"
+#include "SAStyle.h"
 
 //Used to display a list of options.
 //Can select one or multiple options.
@@ -39,7 +40,7 @@ private:
 		OptionListPopup(Window* window, OptionListComponent<T>* parent, const std::string& title) : GuiComponent(window),
 			mMenu(window, title.c_str()), mParent(parent)
 		{
-			auto font = Font::get(FONT_SIZE_MEDIUM);
+			auto font = saFont(FONT_SIZE_MEDIUM);
 			ComponentListRow row;
 
 			// for select all/none
@@ -48,7 +49,7 @@ private:
 			for(auto it = mParent->mEntries.begin(); it != mParent->mEntries.end(); it++)
 			{
 				row.elements.clear();
-				row.addElement(std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(it->name), font, 0x777777FF), true);
+				row.addElement(std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(it->name), font, SA_TEXT_COLOR), true);
 
 				OptionListData& e = *it;
 
@@ -137,9 +138,9 @@ public:
 	OptionListComponent(Window* window, const std::string& name, bool multiSelect = false) : GuiComponent(window), mMultiSelect(multiSelect), mName(name),
 		 mText(window), mLeftArrow(window), mRightArrow(window)
 	{
-		auto font = Font::get(FONT_SIZE_MEDIUM, FONT_PATH_LIGHT);
+		auto font = saFontLight(FONT_SIZE_MEDIUM);
 		mText.setFont(font);
-		mText.setColor(0x777777FF);
+		mText.setColor(SA_TEXT_COLOR);
 		mText.setHorizontalAlignment(ALIGN_CENTER);
 		addChild(&mText);
 

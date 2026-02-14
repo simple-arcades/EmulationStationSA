@@ -1,4 +1,5 @@
 #include "BusyComponent.h"
+#include "SAStyle.h"
 
 #include "components/AnimatedImageComponent.h"
 #include "components/ImageComponent.h"
@@ -18,7 +19,7 @@ BusyComponent::BusyComponent(Window* window) : GuiComponent(window),
 {
 	mAnimation = std::make_shared<AnimatedImageComponent>(mWindow);
 	mAnimation->load(&BUSY_ANIMATION_DEF);
-	mText = std::make_shared<TextComponent>(mWindow, "WORKING...", Font::get(FONT_SIZE_MEDIUM), 0x777777FF);
+	mText = std::make_shared<TextComponent>(mWindow, "WORKING...", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR);
 
 	// col 0 = animation, col 1 = spacer, col 2 = text
 	mGrid.setEntry(mAnimation, Vector2i(1, 1), false, true);

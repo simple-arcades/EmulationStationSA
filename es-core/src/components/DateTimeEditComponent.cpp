@@ -1,4 +1,5 @@
 #include "components/DateTimeEditComponent.h"
+#include "SAStyle.h"
 
 #include "DateTimeComponent.h"
 #include "resources/Font.h"
@@ -6,7 +7,7 @@
 
 DateTimeEditComponent::DateTimeEditComponent(Window* window, DisplayMode dispMode) : GuiComponent(window),
 	mEditing(false), mEditIndex(0), mDisplayMode(dispMode), mRelativeUpdateAccumulator(0),
-	mColor(0x777777FF), mFont(Font::get(FONT_SIZE_SMALL, FONT_PATH_LIGHT)), mUppercase(false), mAutoSize(true)
+	mColor(SA_TEXT_COLOR), mFont(saFontLight(FONT_SIZE_SMALL)), mUppercase(false), mAutoSize(true)
 {
 	updateTextCache();
 }
@@ -237,7 +238,7 @@ std::shared_ptr<Font> DateTimeEditComponent::getFont() const
 	if(mFont)
 		return mFont;
 
-	return Font::get(FONT_SIZE_MEDIUM);
+	return saFont(FONT_SIZE_MEDIUM);
 }
 
 void DateTimeEditComponent::updateTextCache()

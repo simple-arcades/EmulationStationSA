@@ -16,6 +16,7 @@
 #include "ScraperCmdLine.h"
 #include "Settings.h"
 #include "SystemData.h"
+#include "AudioManager.h"
 #include "SystemScreenSaver.h"
 #include <SDL_events.h>
 #include <SDL_main.h>
@@ -364,9 +365,13 @@ int main(int argc, char* argv[])
 			return 1;
 		}
 
+		// Read restart reason before showing loading screen.
+		// This determines the boot image and loading text.
+		window.readRestartReason();
+
 		if (splashScreen)
 		{
-			std::string progressText = "Loading system config...";
+			std::string progressText = window.getRestartText("Loading system config...");
 			window.renderLoadingScreen(progressText);
 		}
 	}
@@ -404,7 +409,7 @@ int main(int argc, char* argv[])
 	ViewController::get()->preload();
 
 	if(splashScreen)
-		window.renderLoadingScreen("Done.");
+		window.renderLoadingScreen(window.getRestartText("Finished! :)"));
 
 	InputManager::getInstance()->init();
 
@@ -421,6 +426,8 @@ int main(int argc, char* argv[])
 
 	int lastTime = SDL_GetTicks();
 	int ps_time = SDL_GetTicks();
+
+	SimpleArcadesMusicManager::getInstance().init();
 
 	bool running = true;
 
@@ -452,6 +459,19 @@ int main(int argc, char* argv[])
 			// If exitting SDL_WaitEventTimeout due to timeout. Trail considering
 			// timeout as an event
 			ps_time = SDL_GetTicks();
+		}
+
+		// Check if runSystemCommand() detected /tmp/es-restart after a game
+		// exited. This flag is set in platform.cpp at the exact moment
+		// system() returns — before ES's resume/reinit sequence can
+		// interfere. Unlike SDL events (which get flushed during resume)
+		// or file checks (which might have timing issues), this is a
+		// simple memory read that cannot be consumed or blocked.
+		if(pendingRestart)
+		{
+			LOG(LogInfo) << "SA_RESTART_POLL: pendingRestart flag is set, exiting main loop";
+			running = false;
+			continue;
 		}
 
 		if(window.isSleeping())

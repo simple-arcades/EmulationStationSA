@@ -1,45 +1,10 @@
-# Compiled Object files
-*.slo
-*.lo
+build/
 *.o
-
-# Compiled Dynamic libraries
-*.so
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-
-# Dependency makefiles
 *.d
-
-# Compiled executable
-emulationstation
-
-# build directory
-build
-Debug
-Release
-MinSizeRel
-RelWithDebInfo
-
-# CMake
 CMakeCache.txt
-CMakeFiles
+CMakeFiles/
 cmake_install.cmake
 Makefile
-
-# Eclipse
-.cproject
-.project
-.settings/
-
-# Clion
-.idea/
-CPackConfig.cmake
-CPackSourceConfig.cmake
-*.cbp
-
-# VSCode
+emulationstation
 .vscode/
+*.swp

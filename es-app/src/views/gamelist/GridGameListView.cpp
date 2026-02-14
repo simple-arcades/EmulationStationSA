@@ -1,4 +1,5 @@
 #include "views/gamelist/GridGameListView.h"
+#include "SAStyle.h"
 
 #include "animations/LambdaAnimation.h"
 #include "views/UIModeController.h"
@@ -74,8 +75,8 @@ GridGameListView::GridGameListView(Window* window, FileData* root) :
 
 	mName.setPosition(mSize.x(), mSize.y());
 	mName.setDefaultZIndex(40);
-	mName.setColor(0xAAAAAAFF);
-	mName.setFont(Font::get(FONT_SIZE_MEDIUM));
+	mName.setColor(SA_GAMENAME_COLOR);
+	mName.setFont(saFont(FONT_SIZE_MEDIUM));
 	mName.setHorizontalAlignment(ALIGN_CENTER);
 	addChild(&mName);
 
@@ -85,7 +86,7 @@ GridGameListView::GridGameListView(Window* window, FileData* root) :
 	mDescContainer.setDefaultZIndex(40);
 	addChild(&mDescContainer);
 
-	mDescription.setFont(Font::get(FONT_SIZE_SMALL));
+	mDescription.setFont(saFont(FONT_SIZE_SMALL));
 	mDescription.setSize(mDescContainer.getSize().x(), 0);
 	mDescContainer.addChild(&mDescription);
 
@@ -263,7 +264,7 @@ void GridGameListView::initMDLabels()
 			pos = lc->getPosition() + Vector3f(0, lc->getSize().y() + rowPadding, 0);
 		}
 
-		components[i]->setFont(Font::get(FONT_SIZE_SMALL));
+		components[i]->setFont(saFont(FONT_SIZE_SMALL));
 		components[i]->setPosition(pos);
 		components[i]->setDefaultZIndex(40);
 	}
@@ -274,7 +275,7 @@ void GridGameListView::initMDValues()
 	std::vector<TextComponent*> labels = getMDLabels();
 	std::vector<GuiComponent*> values = getMDValues();
 
-	std::shared_ptr<Font> defaultFont = Font::get(FONT_SIZE_SMALL);
+	std::shared_ptr<Font> defaultFont = saFont(FONT_SIZE_SMALL);
 	mRating.setSize(defaultFont->getHeight() * 5.0f, (float)defaultFont->getHeight());
 	mReleaseDate.setFont(defaultFont);
 	mDeveloper.setFont(defaultFont);

@@ -1,6 +1,7 @@
 #include "components/SliderComponent.h"
 
 #include "resources/Font.h"
+#include "SAStyle.h"
 
 #define MOVE_REPEAT_DELAY 500
 #define MOVE_REPEAT_RATE 40
@@ -16,7 +17,7 @@ SliderComponent::SliderComponent(Window* window, float min, float max, float inc
 	mKnob.setOrigin(0.5f, 0.5f);
 	mKnob.setImage(":/slider_knob.svg");
 
-	setSize(Renderer::getScreenWidth() * 0.15f, Font::get(FONT_SIZE_MEDIUM)->getLetterHeight());
+	setSize(Renderer::getScreenWidth() * 0.15f, saFont(FONT_SIZE_MEDIUM)->getLetterHeight());
 }
 
 bool SliderComponent::input(InputConfig* config, Input input)
@@ -71,7 +72,7 @@ void SliderComponent::render(const Transform4x4f& parentTrans)
 
 	//render line
 	const float lineWidth = 2;
-	Renderer::drawRect(mKnob.getSize().x() / 2, mSize.y() / 2 - lineWidth / 2, width, lineWidth, 0x777777FF, 0x777777FF);
+	Renderer::drawRect(mKnob.getSize().x() / 2, mSize.y() / 2 - lineWidth / 2, width, lineWidth, SA_SLIDER_LINE_COLOR, SA_SLIDER_LINE_COLOR);
 
 	//render knob
 	mKnob.render(trans);
@@ -98,7 +99,7 @@ float SliderComponent::getValue()
 void SliderComponent::onSizeChanged()
 {
 	if(!mSuffix.empty())
-		mFont = Font::get((int)(mSize.y()), FONT_PATH_LIGHT);
+		mFont = saFontLight((int)(mSize.y() * 2.0f));
 
 	onValueChanged();
 }
@@ -124,7 +125,7 @@ void SliderComponent::onValueChanged()
 		const std::string max = ss.str();
 
 		Vector2f textSize = mFont->sizeText(max);
-		mValueCache = std::shared_ptr<TextCache>(mFont->buildTextCache(val, mSize.x() - textSize.x(), (mSize.y() - textSize.y()) / 2, 0x777777FF));
+		mValueCache = std::shared_ptr<TextCache>(mFont->buildTextCache(val, mSize.x() - textSize.x(), (mSize.y() - textSize.y()) / 2, SA_SLIDER_TEXT_COLOR));
 		mValueCache->metrics.size[0] = textSize.x(); // fudge the width
 	}
 

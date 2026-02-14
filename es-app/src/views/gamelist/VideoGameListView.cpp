@@ -1,4 +1,5 @@
 #include "views/gamelist/VideoGameListView.h"
+#include "SAStyle.h"
 
 #include "animations/LambdaAnimation.h"
 #ifdef _OMX_
@@ -19,6 +20,7 @@ VideoGameListView::VideoGameListView(Window* window, FileData* root) :
 	mImage(window),
 	mVideo(nullptr),
 	mVideoPlaying(false),
+	mMediaDebounceTimer(-1),
 
 	mLblRating(window), mLblReleaseDate(window), mLblDeveloper(window), mLblPublisher(window),
 	mLblGenre(window), mLblPlayers(window), mLblLastPlayed(window), mLblPlayCount(window),
@@ -43,7 +45,15 @@ VideoGameListView::VideoGameListView(Window* window, FileData* root) :
 	mList.setPosition(mSize.x() * (0.50f + padding), mList.getPosition().y());
 	mList.setSize(mSize.x() * (0.50f - padding), mList.getSize().y());
 	mList.setAlignment(TextListComponent<FileData*>::ALIGN_LEFT);
-	mList.setCursorChangedCallback([&](const CursorState& /*state*/) { updateInfoPanel(); });
+
+	// DEBOUNCE: Instead of loading media immediately on every cursor move,
+	// reset the debounce timer. Media will load once cursor is idle.
+	mList.setCursorChangedCallback([&](const CursorState& state) {
+		if (state == CURSOR_STOPPED)
+			mMediaDebounceTimer = MEDIA_DEBOUNCE_MS;
+		else
+			mMediaDebounceTimer = -1; // actively scrolling, cancel any pending load
+	});
 
 	// Image
 	// Default to off the screen
@@ -108,8 +118,8 @@ VideoGameListView::VideoGameListView(Window* window, FileData* root) :
 
 	mName.setPosition(mSize.x(), mSize.y());
 	mName.setDefaultZIndex(40);
-	mName.setColor(0xAAAAAAFF);
-	mName.setFont(Font::get(FONT_SIZE_MEDIUM));
+	mName.setColor(SA_GAMENAME_COLOR);
+	mName.setFont(saFont(FONT_SIZE_MEDIUM));
 	mName.setHorizontalAlignment(ALIGN_CENTER);
 	addChild(&mName);
 
@@ -119,7 +129,7 @@ VideoGameListView::VideoGameListView(Window* window, FileData* root) :
 	mDescContainer.setDefaultZIndex(40);
 	addChild(&mDescContainer);
 
-	mDescription.setFont(Font::get(FONT_SIZE_SMALL));
+	mDescription.setFont(saFont(FONT_SIZE_SMALL));
 	mDescription.setSize(mDescContainer.getSize().x(), 0);
 	mDescContainer.addChild(&mDescription);
 
@@ -202,7 +212,7 @@ void VideoGameListView::initMDLabels()
 			pos = lc->getPosition() + Vector3f(0, lc->getSize().y() + rowPadding, 0);
 		}
 
-		components[i]->setFont(Font::get(FONT_SIZE_SMALL));
+		components[i]->setFont(saFont(FONT_SIZE_SMALL));
 		components[i]->setPosition(pos);
 		components[i]->setDefaultZIndex(40);
 	}
@@ -213,7 +223,7 @@ void VideoGameListView::initMDValues()
 	std::vector<TextComponent*> labels = getMDLabels();
 	std::vector<GuiComponent*> values = getMDValues();
 
-	std::shared_ptr<Font> defaultFont = Font::get(FONT_SIZE_SMALL);
+	std::shared_ptr<Font> defaultFont = saFont(FONT_SIZE_SMALL);
 	mRating.setSize(defaultFont->getHeight() * 5.0f, (float)defaultFont->getHeight());
 	mReleaseDate.setFont(defaultFont);
 	mDeveloper.setFont(defaultFont);
@@ -391,12 +401,29 @@ void VideoGameListView::update(int deltaTime)
 {
 	BasicGameListView::update(deltaTime);
 	mVideo->update(deltaTime);
+
+	// DEBOUNCE: Only load media (video/images/metadata) once cursor has
+	// been idle for MEDIA_DEBOUNCE_MS. This prevents 15+ asset loads
+	// piling up when scrolling at 3+ entries/second on the Pi.
+	if (mMediaDebounceTimer > 0)
+	{
+		mMediaDebounceTimer -= deltaTime;
+		if (mMediaDebounceTimer <= 0)
+		{
+			mMediaDebounceTimer = -1;
+			updateInfoPanel();
+		}
+	}
 }
 
 void VideoGameListView::onShow()
 {
 	GuiComponent::onShow();
-	updateInfoPanel();
+	// Delay media loading slightly so the UI can render first.
+	// This prevents the OMX hardware overlay from drawing the video
+	// on a black screen before the rest of the scene is composited.
+	// Also reduces CPU spike when returning from a launched game.
+	mMediaDebounceTimer = 200;
 }
 
 void VideoGameListView::onFocusLost() {

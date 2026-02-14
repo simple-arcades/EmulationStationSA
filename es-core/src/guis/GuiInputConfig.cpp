@@ -1,4 +1,5 @@
 #include "guis/GuiInputConfig.h"
+#include "SAStyle.h"
 
 #include "components/ButtonComponent.h"
 #include "components/MenuComponent.h"
@@ -68,7 +69,7 @@ GuiInputConfig::GuiInputConfig(Window* window, InputConfig* target, bool reconfi
 	// 0 is a spacer row
 	mGrid.setEntry(std::make_shared<GuiComponent>(mWindow), Vector2i(0, 0), false);
 
-	mTitle = std::make_shared<TextComponent>(mWindow, "CONFIGURING", Font::get(FONT_SIZE_LARGE), 0x555555FF, ALIGN_CENTER);
+	mTitle = std::make_shared<TextComponent>(mWindow, "CONFIGURING", saFont(FONT_SIZE_LARGE), SA_TITLE_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mTitle, Vector2i(0, 1), false, true);
 
 	std::stringstream ss;
@@ -78,10 +79,10 @@ GuiInputConfig::GuiInputConfig(Window* window, InputConfig* target, bool reconfi
 		ss << "CEC";
 	else
 		ss << "GAMEPAD " << (target->getDeviceId() + 1);
-	mSubtitle1 = std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(ss.str()), Font::get(FONT_SIZE_MEDIUM), 0x555555FF, ALIGN_CENTER);
+	mSubtitle1 = std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(ss.str()), saFont(FONT_SIZE_MEDIUM), SA_TITLE_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mSubtitle1, Vector2i(0, 2), false, true);
 
-	mSubtitle2 = std::make_shared<TextComponent>(mWindow, "HOLD ANY BUTTON TO SKIP", Font::get(FONT_SIZE_SMALL), 0x999999FF, ALIGN_CENTER);
+	mSubtitle2 = std::make_shared<TextComponent>(mWindow, "HOLD ANY BUTTON TO SKIP", saFont(FONT_SIZE_SMALL), SA_SUBTITLE_COLOR, ALIGN_CENTER);
 	mSubtitle2->setOpacity(GUI_INPUT_CONFIG_LIST[0].skippable * 255);
 	mGrid.setEntry(mSubtitle2, Vector2i(0, 3), false, true);
 
@@ -96,8 +97,8 @@ GuiInputConfig::GuiInputConfig(Window* window, InputConfig* target, bool reconfi
 		// icon
 		auto icon = std::make_shared<ImageComponent>(mWindow);
 		icon->setImage(GUI_INPUT_CONFIG_LIST[i].icon);
-		icon->setColorShift(0x777777FF);
-		icon->setResize(0, Font::get(FONT_SIZE_MEDIUM)->getLetterHeight() * 1.25f);
+		icon->setColorShift(SA_INPUT_ICON_COLOR);
+		icon->setResize(0, saFont(FONT_SIZE_MEDIUM)->getLetterHeight() * 1.25f);
 		row.addElement(icon, false);
 
 		// spacer between icon and text
@@ -105,10 +106,10 @@ GuiInputConfig::GuiInputConfig(Window* window, InputConfig* target, bool reconfi
 		spacer->setSize(16, 0);
 		row.addElement(spacer, false);
 
-		auto text = std::make_shared<TextComponent>(mWindow, GUI_INPUT_CONFIG_LIST[i].dispName, Font::get(FONT_SIZE_MEDIUM), 0x777777FF);
+		auto text = std::make_shared<TextComponent>(mWindow, GUI_INPUT_CONFIG_LIST[i].dispName, saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR);
 		row.addElement(text, true);
 
-		auto mapping = std::make_shared<TextComponent>(mWindow, "-NOT DEFINED-", Font::get(FONT_SIZE_MEDIUM, FONT_PATH_LIGHT), 0x999999FF, ALIGN_RIGHT);
+		auto mapping = std::make_shared<TextComponent>(mWindow, "-NOT DEFINED-", saFontLight(FONT_SIZE_MEDIUM), SA_SUBTITLE_COLOR, ALIGN_RIGHT);
 		setNotDefined(mapping); // overrides text and color set above
 		row.addElement(mapping, true);
 		mMappings.push_back(mapping);
@@ -258,7 +259,7 @@ void GuiInputConfig::update(int deltaTime)
 				std::stringstream ss;
 				ss << "HOLD FOR " << HOLD_TO_SKIP_MS/1000 - curSec << "S TO SKIP";
 				text->setText(ss.str());
-				text->setColor(0x777777FF);
+				text->setColor(SA_TEXT_COLOR);
 			}
 		}
 	}
@@ -289,25 +290,25 @@ void GuiInputConfig::rowDone()
 void GuiInputConfig::setPress(const std::shared_ptr<TextComponent>& text)
 {
 	text->setText("PRESS ANYTHING");
-	text->setColor(0x656565FF);
+	text->setColor(SA_INPUT_MAPPED_COLOR);
 }
 
 void GuiInputConfig::setNotDefined(const std::shared_ptr<TextComponent>& text)
 {
 	text->setText("-NOT DEFINED-");
-	text->setColor(0x999999FF);
+	text->setColor(SA_SUBTITLE_COLOR);
 }
 
 void GuiInputConfig::setAssignedTo(const std::shared_ptr<TextComponent>& text, Input input)
 {
 	text->setText(Utils::String::toUpper(input.string()));
-	text->setColor(0x777777FF);
+	text->setColor(SA_TEXT_COLOR);
 }
 
 void GuiInputConfig::error(const std::shared_ptr<TextComponent>& text, const std::string& /*msg*/)
 {
 	text->setText("ALREADY TAKEN");
-	text->setColor(0x656565FF);
+	text->setColor(SA_INPUT_MAPPED_COLOR);
 }
 
 bool GuiInputConfig::assign(Input input, int inputId)

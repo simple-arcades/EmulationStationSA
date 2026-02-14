@@ -296,6 +296,7 @@ void FileData::launchGame(Window* window)
 	command = Utils::String::replace(command, "%BASENAME%", basename);
 	command = Utils::String::replace(command, "%ROM_RAW%", rom_raw);
 
+	SimpleArcadesMusicManager::getInstance().onGameLaunched();
 	Scripting::fireEvent("game-start", rom, basename, name);
 
 	LOG(LogInfo) << "	" << command;
@@ -306,6 +307,7 @@ void FileData::launchGame(Window* window)
 		LOG(LogWarning) << "...launch terminated with nonzero exit code " << exitCode << "!";
 	}
 
+	SimpleArcadesMusicManager::getInstance().onGameReturned();
 	Scripting::fireEvent("game-end");
 
 	window->init();

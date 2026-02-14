@@ -4,9 +4,13 @@
 #include "components/ImageComponent.h"
 #include "resources/Font.h"
 #include "resources/TextureResource.h"
+#include "SAStyle.h"
+#include "AudioManager.h"
 #include "Log.h"
 #include "Scripting.h"
 #include <algorithm>
+#include <cstdio>
+#include <fstream>
 #include <iomanip>
 
 #ifdef WIN32
@@ -14,7 +18,8 @@
 #endif
 
 Window::Window() : mNormalizeNextUpdate(false), mFrameTimeElapsed(0), mFrameCountElapsed(0), mAverageDeltaTime(10),
-	mAllowSleep(true), mSleeping(false), mTimeSinceLastInput(0), mScreenSaver(NULL), mRenderScreenSaver(false), mInfoPopup(NULL)
+	mAllowSleep(true), mSleeping(false), mTimeSinceLastInput(0), mScreenSaver(NULL), mRenderScreenSaver(false), mInfoPopup(NULL),
+	mRestartReason(""), mBootImagePath("")
 {
 	mHelp = new HelpComponent(this);
 	mBackgroundOverlay = new ImageComponent(this);
@@ -82,9 +87,9 @@ bool Window::init()
 	//keep a reference to the default fonts, so they don't keep getting destroyed/recreated
 	if(mDefaultFonts.empty())
 	{
-		mDefaultFonts.push_back(Font::get(FONT_SIZE_SMALL));
-		mDefaultFonts.push_back(Font::get(FONT_SIZE_MEDIUM));
-		mDefaultFonts.push_back(Font::get(FONT_SIZE_LARGE));
+		mDefaultFonts.push_back(saFont(FONT_SIZE_SMALL));
+		mDefaultFonts.push_back(saFont(FONT_SIZE_MEDIUM));
+		mDefaultFonts.push_back(saFont(FONT_SIZE_LARGE));
 	}
 
 	mBackgroundOverlay->setImage(":/scroll_gradient.png");
@@ -287,18 +292,37 @@ void Window::renderLoadingScreen(std::string text, float percent, unsigned char 
 		float x = Renderer::getScreenWidth() / 2 - w / 2;
 		float y = Renderer::getScreenHeight() - (Renderer::getScreenHeight() * 3 * baseHeight);
 
-		Renderer::drawRect(x, y, w, h, 0x25252500 | opacity, 0x25252500 | opacity);
-		Renderer::drawRect(x, y, (w*percent), h, 0x006C9E00 | opacity, 0x006C9E00 | opacity); // 0xFFFFFFFF
+		Renderer::drawRect(x, y, w, h, SA_LOADING_BG_COLOR << 8 | opacity, SA_LOADING_BG_COLOR << 8 | opacity);
+		Renderer::drawRect(x, y, (w*percent), h, SA_LOADING_BAR_COLOR << 8 | opacity, SA_LOADING_BAR_COLOR << 8 | opacity);
 	}
 
-	ImageComponent splash(this, true);
-	splash.setResize(Renderer::getScreenWidth() * 0.6f, 0.0f);
-	splash.setImage(":/splash.svg");
-	splash.setPosition((Renderer::getScreenWidth() - splash.getSize().x()) / 2, (Renderer::getScreenHeight() - splash.getSize().y()) / 2 * 0.6f);
-	splash.render(trans);
+	// Use lazy-init for the splash image: create it on first render call
+	// rather than during readRestartReason(). This ensures the GPU and
+	// texture system are fully warmed up before we load the image.
+	if (!mSplashImage)
+	{
+		mSplashImage = std::unique_ptr<ImageComponent>(new ImageComponent(this, true));
+		mSplashImage->setResize(Renderer::getScreenWidth() * 0.6f, 0.0f);
+		if (!mBootImagePath.empty())
+		{
+			LOG(LogInfo) << "Loading boot image: " << mBootImagePath;
+			mSplashImage->setImage(mBootImagePath);
+		}
+		else
+		{
+			LOG(LogInfo) << "No boot image path set, using splash.svg";
+			mSplashImage->setImage(":/splash.svg");
+		}
+		LOG(LogInfo) << "Splash image size after load: "
+			<< mSplashImage->getSize().x() << " x " << mSplashImage->getSize().y();
+	}
+	mSplashImage->setPosition(
+		(Renderer::getScreenWidth() - mSplashImage->getSize().x()) / 2,
+		(Renderer::getScreenHeight() - mSplashImage->getSize().y()) / 2 * 0.6f);
+	mSplashImage->render(trans);
 
 	auto& font = mDefaultFonts.at(1);
-	TextCache* cache = font->buildTextCache(text, 0, 0, 0x656565FF);
+	TextCache* cache = font->buildTextCache(text, 0, 0, SA_LOADING_TEXT_COLOR);
 
 	float x = Math::round((Renderer::getScreenWidth() - cache->metrics.size.x()) / 2.0f);
 	float y = Math::round(Renderer::getScreenHeight() * 0.78f);
@@ -314,6 +338,105 @@ void Window::renderLoadingScreen(std::string text, float percent, unsigned char 
 	SDL_Event event;
 	while (SDL_PollEvent(&event));
 #endif
+}
+
+void Window::readRestartReason()
+{
+	const std::string path = SA_RESTART_REASON_PATH;
+
+	// Always resolve the default boot image (used for normal boot)
+	{
+		std::string defaultPath = std::string(SA_BOOT_IMAGES_PATH) + SA_BOOT_DEFAULT_IMAGE;
+		if (Utils::FileSystem::exists(defaultPath))
+			mBootImagePath = defaultPath;
+	}
+
+	// Check for restart reason file
+	if (Utils::FileSystem::exists(path))
+	{
+		std::ifstream file(path);
+		if (file.good())
+		{
+			std::getline(file, mRestartReason);
+			// Trim whitespace/newlines
+			while (!mRestartReason.empty() && (mRestartReason.back() == '\n' || mRestartReason.back() == '\r' || mRestartReason.back() == ' '))
+				mRestartReason.pop_back();
+		}
+		file.close();
+
+		// Delete the reason file so it doesn't persist across future boots
+		std::remove(path.c_str());
+
+		if (!mRestartReason.empty())
+		{
+			LOG(LogInfo) << "Restart reason detected: " << mRestartReason;
+
+			// Map reason keywords to image filenames
+			std::string imageFile;
+			if (mRestartReason == "game_save")
+				imageFile = "game_saved.png";
+			else if (mRestartReason == "music_update")
+				imageFile = "music_update.png";
+			else if (mRestartReason == "screensaver_change")
+				imageFile = "screensaver_update.png";
+			else if (mRestartReason == "theme_change")
+				imageFile = "theme_update.png";
+
+			if (!imageFile.empty())
+			{
+				std::string candidate = std::string(SA_BOOT_IMAGES_PATH) + imageFile;
+				if (Utils::FileSystem::exists(candidate))
+					mBootImagePath = candidate;
+			}
+		}
+	}
+
+	// Boot image path is now resolved. The actual ImageComponent will be
+	// created lazily on first renderLoadingScreen() call, ensuring the
+	// GPU and texture system are fully ready.
+}
+
+std::string Window::getRestartText(const std::string& defaultText) const
+{
+	if (mRestartReason.empty())
+		return defaultText;
+
+	// Determine which loading phase we're in based on the default text
+	// that would normally display. This lets us show different messages
+	// for each phase without adding extra state tracking.
+	bool isPreloadPhase = (defaultText.find("Almost") != std::string::npos
+		|| defaultText.find("Loading...") != std::string::npos);
+	bool isFinishedPhase = (defaultText.find("Finished") != std::string::npos);
+
+	if (mRestartReason == "game_save")
+	{
+		if (isFinishedPhase) return "FINISHED! :)";
+		if (isPreloadPhase)  return "REFRESHING SAVED GAMES...";
+		return "NEW GAME SAVED!";
+	}
+	if (mRestartReason == "music_update")
+	{
+		if (isFinishedPhase) return "ENJOY THE TUNES! :)";
+		if (isPreloadPhase)  return "LOADING NEW TRACKS...";
+		return "UPDATING MUSIC SETTINGS...";
+	}
+	if (mRestartReason == "screensaver_change")
+	{
+		if (isFinishedPhase) return "LOOKING GOOD! :)";
+		if (isPreloadPhase)  return "APPLYING CHANGES...";
+		return "UPDATING SCREENSAVER SETTINGS...";
+	}
+	if (mRestartReason == "theme_change")
+	{
+		if (isFinishedPhase) return "FRESH NEW LOOK! :)";
+		if (isPreloadPhase)  return "LOADING THEME ASSETS...";
+		return "APPLYING NEW THEME...";
+	}
+
+	// Unknown reason
+	if (isFinishedPhase) return "ALL DONE! :)";
+	if (isPreloadPhase)  return "ALMOST READY...";
+	return "RESTARTING...";
 }
 
 void Window::renderHelpPromptsEarly()
@@ -429,6 +552,9 @@ void Window::startScreenSaver(SystemData* system)
 
 		mScreenSaver->startScreenSaver(system);
 		mRenderScreenSaver = true;
+
+		// Music v2: pause music if configured.
+		SimpleArcadesMusicManager::getInstance().onScreenSaverStarted();
 	}
 }
 
@@ -439,6 +565,9 @@ bool Window::cancelScreenSaver()
 		mScreenSaver->stopScreenSaver();
 		mRenderScreenSaver = false;
 		Scripting::fireEvent("screensaver-stop");
+
+		// Music v2: resume music if it was paused for screensaver.
+		SimpleArcadesMusicManager::getInstance().onScreenSaverStopped();
 
 		// Tell the GUI components the screensaver has stopped
 		for(auto i = mGuiStack.cbegin(); i != mGuiStack.cend(); i++)

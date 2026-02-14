@@ -1,4 +1,5 @@
 #include <fstream>
+#include "SAStyle.h"
 
 #include "guis/GuiCollectionSystemsOptions.h"
 
@@ -26,13 +27,13 @@ void GuiCollectionSystemsOptions::initializeMenu()
 	addSystemsToMenu();
 
 	// manage random collection
-	addEntry("RANDOM GAME COLLECTION SETTINGS", 0x777777FF, true, [this] { openRandomCollectionSettings(); });
+	addEntry("RANDOM GAME COLLECTION SETTINGS", SA_TEXT_COLOR, true, [this] { openRandomCollectionSettings(); });
 
 
 	ComponentListRow row;
 	if(CollectionSystemManager::get()->isEditing())
 	{
-		row.addElement(std::make_shared<TextComponent>(mWindow, "FINISH EDITING '" + Utils::String::toUpper(CollectionSystemManager::get()->getEditingCollection()) + "' COLLECTION", Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+		row.addElement(std::make_shared<TextComponent>(mWindow, "FINISH EDITING '" + Utils::String::toUpper(CollectionSystemManager::get()->getEditingCollection()) + "' COLLECTION", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 		row.makeAcceptInputHandler(std::bind(&GuiCollectionSystemsOptions::exitEditMode, this));
 		mMenu.addRow(row);
 	}
@@ -42,7 +43,7 @@ void GuiCollectionSystemsOptions::initializeMenu()
 		std::vector<std::string> unusedFolders = CollectionSystemManager::get()->getUnusedSystemsFromTheme();
 		if (unusedFolders.size() > 0)
 		{
-			addEntry("CREATE NEW CUSTOM COLLECTION FROM THEME", 0x777777FF, true,
+			addEntry("CREATE NEW CUSTOM COLLECTION FROM THEME", SA_TEXT_COLOR, true,
 			[this, unusedFolders] {
 				auto s = new GuiSettings(mWindow, "SELECT THEME FOLDER");
 				std::shared_ptr< OptionListComponent<std::string> > folderThemes = std::make_shared< OptionListComponent<std::string> >(mWindow, "SELECT THEME FOLDER", true);
@@ -58,7 +59,7 @@ void GuiCollectionSystemsOptions::initializeMenu()
 					};
 					row.makeAcceptInputHandler(createCollectionCall);
 
-					auto themeFolder = std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(name), Font::get(FONT_SIZE_SMALL), 0x777777FF);
+					auto themeFolder = std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(name), saFont(FONT_SIZE_SMALL), SA_TEXT_COLOR);
 					row.addElement(themeFolder, true);
 					s->addRow(row);
 				}
@@ -66,7 +67,7 @@ void GuiCollectionSystemsOptions::initializeMenu()
 			});
 		}
 
-		row.addElement(std::make_shared<TextComponent>(mWindow, "CREATE NEW CUSTOM COLLECTION", Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+		row.addElement(std::make_shared<TextComponent>(mWindow, "CREATE NEW CUSTOM COLLECTION", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 		auto createCustomCollection = [this](const std::string& newVal) {
 			std::string name = newVal;
 			// we need to store the first Gui and remove it, as it'll be deleted by the actual Gui
@@ -122,7 +123,7 @@ void GuiCollectionSystemsOptions::initializeMenu()
 
 void GuiCollectionSystemsOptions::addEntry(const char* name, unsigned int color, bool add_arrow, const std::function<void()>& func)
 {
-	std::shared_ptr<Font> font = Font::get(FONT_SIZE_MEDIUM);
+	std::shared_ptr<Font> font = saFont(FONT_SIZE_MEDIUM);
 
 	// populate the list
 	ComponentListRow row;

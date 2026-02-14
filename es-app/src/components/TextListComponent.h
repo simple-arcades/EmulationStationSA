@@ -168,6 +168,24 @@ void TextListComponent<T>::render(const Transform4x4f& parentTrans)
 		mCursorPrev = mCursor;
 	}
 
+	// Safety clamp: guarantee the cursor is always within the visible viewport.
+	// During fast scrolling, multiple scroll() calls can fire between renders,
+	// causing mCursor to advance beyond the viewport before render can catch up.
+	// This clamp forces an immediate correction so the selector never goes off-screen.
+	if(size() > mViewportHeight)
+	{
+		int cursorPos = mCursor - mViewportTop;
+		if(cursorPos < 0 || cursorPos >= mViewportHeight)
+		{
+			mViewportTop = mCursor - mViewportHeight / 2;
+			if(mViewportTop < 0)
+				mViewportTop = 0;
+			int viewportTopMax = size() - mViewportHeight;
+			if(mViewportTop > viewportTopMax)
+				mViewportTop = viewportTopMax;
+		}
+	}
+
 	unsigned int listCutoff = mViewportTop + mViewportHeight;
 	if(listCutoff > size())
 		listCutoff = size();

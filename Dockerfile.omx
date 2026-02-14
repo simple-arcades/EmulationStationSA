@@ -1,0 +1,33 @@
+FROM arm32v7/debian:buster
+
+SHELL ["/bin/bash", "-lc"]
+
+# Buster is EOL -> use Debian archive repos
+RUN cat > /etc/apt/sources.list <<EOF
+deb http://archive.debian.org/debian buster main contrib non-free
+deb http://archive.debian.org/debian-security buster/updates main contrib non-free
+deb http://archive.debian.org/debian buster-updates main contrib non-free
+EOF
+
+RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+
+# Build deps (ONE TIME in the image)
+RUN apt-get -o Acquire::Check-Valid-Until=false update && \
+    apt-get install -y --no-install-recommends \
+      build-essential cmake pkg-config ca-certificates git python3 \
+      libsdl2-dev libfreeimage-dev libfreetype6-dev libcurl4-openssl-dev rapidjson-dev \
+      libasound2-dev libgles2-mesa-dev fonts-droid-fallback \
+      libvlc-dev libvlccore-dev vlc-bin && \
+    rm -rf /var/lib/apt/lists/*
+
+# Build/install Raspberry Pi userland into /opt/vc (ONE TIME in the image)
+RUN git clone --depth 1 https://github.com/raspberrypi/userland /tmp/userland && \
+    mkdir -p /tmp/userland/build && \
+    cd /tmp/userland/build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DVMCS_INSTALL_PREFIX=/opt/vc -DALL_APPS=OFF && \
+    make -j2 && \
+    make install && \
+    rm -rf /tmp/userland
+
+ENV CMAKE_PREFIX_PATH=/opt/vc
+WORKDIR /src

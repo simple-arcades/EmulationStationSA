@@ -3,6 +3,7 @@
 #define ES_CORE_COMPONENTS_ILIST_H
 
 #include "components/ImageComponent.h"
+#include "SAStyle.h"
 #include "resources/Font.h"
 #include "PowerSaver.h"
 
@@ -94,7 +95,7 @@ public:
 		mTitleOverlayColor = 0xFFFFFF00;
 		mGradient.setResize((float)Renderer::getScreenWidth(), (float)Renderer::getScreenHeight());
 		mGradient.setImage(":/scroll_gradient.png");
-		mTitleOverlayFont = Font::get(FONT_SIZE_LARGE);
+		mTitleOverlayFont = saFont(FONT_SIZE_LARGE);
 	}
 
 	bool isScrolling() const

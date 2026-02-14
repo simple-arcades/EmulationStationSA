@@ -16,29 +16,754 @@
 #include "Scripting.h"
 #include "SystemData.h"
 #include "VolumeControl.h"
+#include "AudioManager.h"
 #include <SDL_events.h>
 #include <algorithm>
+#include <set>
 #include "platform.h"
 #include "FileSorts.h"
 #include "views/gamelist/IGameListView.h"
 #include "guis/GuiInfoPopup.h"
+#include "SAStyle.h"
+#include "guis/GuiImageViewer.h"
+#include "InputManager.h"
+#include "utils/FileSystemUtil.h"
+#include "utils/StringUtil.h"
+#include "pugixml.hpp"
+#include "renderers/Renderer.h"
+#include <cctype>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fstream>
+#include <sstream>
+#include <cctype>
 
-GuiMenu::GuiMenu(Window* window) : GuiComponent(window), mMenu(window, "MAIN MENU"), mVersion(window)
+namespace
+{
+	struct ControllerProfile
+	{
+		std::string name;
+		std::string guid;
+	};
+	
+	static std::string normalizeSpaces(const std::string& in)
+	{
+		std::string out;
+		out.reserve(in.size());
+		bool inSpace = false;
+
+		for (unsigned char ch : in)
+		{
+			if (std::isspace(ch))
+			{
+				if (!out.empty() && !inSpace)
+					out.push_back(' ');
+				inSpace = true;
+			}
+			else
+			{
+				out.push_back((char)ch);
+				inSpace = false;
+			}
+		}
+
+		if (!out.empty() && out.back() == ' ')
+			out.pop_back();
+
+		return out;
+	}
+
+	static std::string ellipsize(const std::string& s, size_t maxLen)
+	{
+		if (s.size() <= maxLen) return s;
+		if (maxLen <= 3) return s.substr(0, maxLen);
+		return s.substr(0, maxLen - 3) + "...";
+	}
+
+	static bool isBlacklistedDeviceName(const std::string& name)
+	{
+		// Block ALL DragonRise (built-ins + any external DragonRise you don't want users adding)
+		return (name.find("DragonRise") != std::string::npos);
+	}
+
+	static std::vector<ControllerProfile> getDeletableControllerProfiles()
+	{
+		std::vector<ControllerProfile> out;
+
+		const std::string cfgPath = InputManager::getConfigPath();
+		if (!Utils::FileSystem::exists(cfgPath))
+			return out;
+
+		pugi::xml_document doc;
+		pugi::xml_parse_result res = doc.load_file(cfgPath.c_str());
+		if (!res)
+			return out;
+
+		pugi::xml_node root = doc.child("inputList");
+		if (!root)
+			return out;
+
+		std::set<std::string> seenGuids;
+
+		for (pugi::xml_node n = root.child("inputConfig"); n; n = n.next_sibling("inputConfig"))
+		{
+			const std::string type = n.attribute("type").as_string();
+			const std::string devName = n.attribute("deviceName").as_string();
+			const std::string guid = n.attribute("deviceGUID").as_string();
+
+			// Only allow deleting joystick profiles (never keyboard)
+			if (type != "joystick")
+				continue;
+
+			// Never show DragonRise in delete list
+			if (isBlacklistedDeviceName(devName))
+				continue;
+
+			if (guid.empty())
+				continue;
+
+			// De-dupe by GUID
+			if (!seenGuids.insert(guid).second)
+				continue;
+
+			ControllerProfile p;
+			p.name = ellipsize(normalizeSpaces(devName), 32);
+			p.guid = guid;
+			out.push_back(p);
+		}
+
+		return out;
+	}
+	
+	static std::string normalizeDeviceName(const std::string& s)
+	{
+		std::string out;
+		bool inSpace = false;
+
+		for (size_t i = 0; i < s.size(); i++)
+		{
+			unsigned char c = (unsigned char)s[i];
+			if (std::isspace(c))
+			{
+				if (!out.empty() && !inSpace)
+				{
+					out.push_back(' ');
+					inSpace = true;
+				}
+			}
+			else
+			{
+				out.push_back((char)c);
+				inSpace = false;
+			}
+		}
+
+		// trim trailing space
+		if (!out.empty() && out.back() == ' ')
+			out.pop_back();
+
+		return out;
+	}
+
+	static bool endsWith(const std::string& s, const std::string& suffix)
+	{
+		if (s.size() < suffix.size())
+			return false;
+		return std::equal(suffix.rbegin(), suffix.rend(), s.rbegin());
+	}
+
+	static bool retroArchAutoconfigMatchesDevice(const std::string& filePath, const std::string& wantedNorm)
+	{
+		std::ifstream in(filePath.c_str());
+		if (!in)
+			return false;
+
+		std::stringstream buf;
+		buf << in.rdbuf();
+		const std::string content = buf.str();
+
+		std::istringstream ss(content);
+		std::string line;
+		while (std::getline(ss, line))
+		{
+			const std::string low = Utils::String::toLower(line);
+			if (low.find("input_device") == std::string::npos)
+				continue;
+
+			// Expect something like: input_device = "Device Name"
+			const size_t q1 = line.find('"');
+			if (q1 == std::string::npos) continue;
+			const size_t q2 = line.find('"', q1 + 1);
+			if (q2 == std::string::npos) continue;
+
+			const std::string val = line.substr(q1 + 1, q2 - q1 - 1);
+			if (normalizeDeviceName(val) == wantedNorm)
+				return true;
+		}
+
+		return false;
+	}
+
+	static void deleteRetroArchAutoconfigRecursive(const std::string& dirPath, const std::string& wantedNorm)
+	{
+		DIR* d = opendir(dirPath.c_str());
+		if (!d)
+			return;
+
+		struct dirent* ent = nullptr;
+		while ((ent = readdir(d)) != nullptr)
+		{
+			const std::string name = ent->d_name;
+			if (name == "." || name == "..")
+				continue;
+
+			const std::string path = dirPath + "/" + name;
+
+			struct stat st;
+			if (stat(path.c_str(), &st) != 0)
+				continue;
+
+			if (S_ISDIR(st.st_mode))
+			{
+				deleteRetroArchAutoconfigRecursive(path, wantedNorm);
+			}
+			else if (S_ISREG(st.st_mode))
+			{
+				if (!endsWith(name, ".cfg"))
+					continue;
+
+				if (retroArchAutoconfigMatchesDevice(path, wantedNorm))
+				{
+					unlink(path.c_str()); // hard delete
+				}
+			}
+		}
+
+		closedir(d);
+	}
+
+	static void deleteRetroArchAutoconfigForDeviceName(const std::string& deviceName)
+	{
+		if (deviceName.empty())
+			return;
+
+		const std::string root = "/opt/retropie/configs/all/retroarch/autoconfig";
+		if (!Utils::FileSystem::exists(root))
+			return;
+
+		const std::string wantedNorm = normalizeDeviceName(deviceName);
+		deleteRetroArchAutoconfigRecursive(root, wantedNorm);
+	}
+
+
+	static bool deleteControllerProfileByGuid(const std::string& guid)
+	{
+		const std::string cfgPath = InputManager::getConfigPath();
+		if (!Utils::FileSystem::exists(cfgPath))
+			return false;
+
+		pugi::xml_document doc;
+		pugi::xml_parse_result res = doc.load_file(cfgPath.c_str());
+		if (!res)
+			return false;
+
+		pugi::xml_node root = doc.child("inputList");
+		if (!root)
+			return false;
+
+		bool removedAny = false;
+
+		std::string removedDeviceName;
+
+		for (pugi::xml_node n = root.child("inputConfig"); n;)
+		{
+			pugi::xml_node next = n.next_sibling("inputConfig");
+
+			const std::string type = n.attribute("type").as_string();
+			const std::string nodeGuid = n.attribute("deviceGUID").as_string();
+			const std::string devName = n.attribute("deviceName").as_string();
+
+			// Only delete joystick profiles, never keyboard
+			if (type == "joystick" && nodeGuid == guid)
+			{
+				// Extra safety: never delete DragonRise even if GUID matched somehow
+				if (!isBlacklistedDeviceName(devName))
+				{
+					removedDeviceName = devName;
+					root.remove_child(n);
+					removedAny = true;
+				}
+			}
+
+			n = next;
+		}
+		
+		
+		if (!removedAny)
+			return false;
+
+		const bool saved = doc.save_file(cfgPath.c_str());
+		if (saved && !removedDeviceName.empty())
+		{
+			// Also remove RetroArch autoconfigs created for this controller
+			deleteRetroArchAutoconfigForDeviceName(removedDeviceName);
+		}
+		return saved;
+	}
+}
+
+void GuiMenu::openDeleteControllerProfile()
+{
+	auto profiles = getDeletableControllerProfiles();
+
+	if (profiles.empty())
+	{
+		mWindow->pushGui(new GuiMsgBox(mWindow,
+			"NO EXTERNAL CONTROLLER PROFILES FOUND.\n\n"
+			"CONNECT AN EXTERNAL CONTROLLER,\n"
+			"THEN CONFIGURE IT FIRST.",
+			"OK", nullptr));
+		return;
+	}
+
+	auto s = new GuiSettings(mWindow, "DELETE CONTROLLER PROFILE");
+	
+	auto profileList = std::make_shared<OptionListComponent<std::string>>(mWindow, "CONTROLLER", false);
+	bool first = true;
+	for (auto& p : profiles)
+	{
+		profileList->add(p.name, p.guid, first);
+		first = false;
+	}
+	s->addWithLabel("CONTROLLER", profileList);
+
+	ComponentListRow row;
+	row.makeAcceptInputHandler([this, profileList, profiles]
+	{
+		const std::string guid = profileList->getSelected();
+
+		std::string pickedName = "";
+		for (auto& p : profiles)
+		{
+			if (p.guid == guid) { pickedName = p.name; break; }
+		}
+
+		mWindow->pushGui(new GuiMsgBox(mWindow,
+			"DELETE CONTROLLER PROFILE?\n\n" + pickedName + "\n\n"
+			"THIS CANNOT BE UNDONE.",
+			"YES",
+			[this, guid]
+			{
+				if (deleteControllerProfileByGuid(guid))
+				{
+					auto restart_es_fx = []() {
+						Scripting::fireEvent("quit");
+						quitES(QuitMode::RESTART);
+					};
+					
+					mWindow->pushGui(new GuiMsgBox(mWindow,
+						"PROFILE DELETED.\nRESTART REQUIRED.\n\nPRESS OK TO RESTART.",
+						"OK", restart_es_fx));
+				}
+				else
+				{
+					mWindow->pushGui(new GuiMsgBox(mWindow,
+						"DELETE FAILED.\n\nNOTHING CHANGED.",
+						"OK", nullptr));
+				}
+			},
+			"NO", nullptr));
+	});
+
+	row.addElement(std::make_shared<TextComponent>(mWindow,
+		"DELETE SELECTED PROFILE", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	row.addElement(makeArrow(mWindow), false);
+	s->addRow(row);
+
+	mWindow->pushGui(s);
+}
+
+
+
+
+
+
+	// --- Music v2 Pass 2: helper to clean track display names ---
+	static std::string musicCleanName(const std::string& raw)
+	{
+		std::string s = raw;
+
+		// Strip .mp3/.MP3 extension.
+		{
+			const size_t dot = s.rfind('.');
+			if (dot != std::string::npos)
+			{
+				std::string ext = s.substr(dot);
+				for (auto& c : ext) c = tolower(c);
+				if (ext == ".mp3")
+					s = s.substr(0, dot);
+			}
+		}
+
+		// Replace underscores with spaces.
+		for (auto& c : s)
+			if (c == '_') c = ' ';
+
+		// Collapse multiple spaces.
+		std::string out;
+		bool lastSp = false;
+		for (char c : s)
+		{
+			if (c == ' ') { if (!lastSp) out += c; lastSp = true; }
+			else { out += c; lastSp = false; }
+		}
+
+		// Trim leading/trailing spaces.
+		while (!out.empty() && out.front() == ' ') out.erase(out.begin());
+		while (!out.empty() && out.back() == ' ') out.pop_back();
+
+		// Title case.
+		bool capNext = true;
+		for (size_t i = 0; i < out.size(); ++i)
+		{
+			if (out[i] == ' ') capNext = true;
+			else if (capNext) { out[i] = toupper((unsigned char)out[i]); capNext = false; }
+		}
+
+		return out;
+	}
+
+	// Extract just the filename from a relative path.
+	static std::string musicBaseName(const std::string& relPath)
+	{
+		const size_t slash = relPath.rfind('/');
+		return (slash != std::string::npos) ? relPath.substr(slash + 1) : relPath;
+	}
+
+	// Extract the folder name from a relative path.
+	static std::string musicFolderName(const std::string& relPath)
+	{
+		const size_t slash = relPath.find('/');
+		return (slash != std::string::npos) ? relPath.substr(0, slash) : "";
+	}
+
+	// --- Music v2 Pass 2: Shuffle All Settings submenu ---
+	void openShuffleAllSettings(Window* window)
+	{
+		// Show loading feedback immediately (filesystem scan can take 10+ seconds on RPi).
+		window->renderLoadingScreen("Loading music...");
+
+		auto s = new GuiSettings(window, "SHUFFLE ALL SETTINGS");
+
+		auto tracks = SimpleArcadesMusicManager::getInstance().getShuffleAllowlist();
+
+		if (tracks.empty())
+		{
+			s->addWithLabel("NO TRACKS FOUND", std::make_shared<TextComponent>(window,
+				"Add MP3 files to soundtracks folder", saFont(FONT_SIZE_SMALL), SA_TEXT_COLOR));
+			window->pushGui(s);
+			return;
+		}
+
+		// Build a switch for each track, grouped by soundtrack folder.
+		struct TrackSwitch {
+			std::string relPath;
+			std::shared_ptr<SwitchComponent> sw;
+		};
+		auto trackSwitches = std::make_shared<std::vector<TrackSwitch>>();
+
+		std::string lastFolder;
+		for (const auto& entry : tracks)
+		{
+			const std::string& relPath = entry.first;
+			const bool enabled = entry.second;
+
+			// Show folder separator when folder changes.
+			const std::string folder = musicFolderName(relPath);
+			if (folder != lastFolder && !folder.empty())
+			{
+				lastFolder = folder;
+				ComponentListRow headerRow;
+				headerRow.addElement(std::make_shared<TextComponent>(window,
+					musicCleanName(folder), saFont(FONT_SIZE_MEDIUM), SA_SECTION_HEADER_COLOR), true);
+				s->addRow(headerRow);
+			}
+
+			// Track toggle row.
+			const std::string trackName = musicCleanName(musicBaseName(relPath));
+			auto sw = std::make_shared<SwitchComponent>(window);
+			sw->setState(enabled);
+
+			s->addWithLabel("  " + trackName, sw);
+			trackSwitches->push_back({relPath, sw});
+		}
+
+		// Save: write changes back to allowlist.
+		s->addSaveFunc([trackSwitches]
+		{
+			for (const auto& ts : *trackSwitches)
+			{
+				SimpleArcadesMusicManager::getInstance().setTrackEnabled(ts.relPath, ts.sw->getState());
+			}
+			SimpleArcadesMusicManager::getInstance().saveShuffleAllowlist();
+		});
+
+		window->pushGui(s);
+	}
+
+	void openSimpleArcadesMusicSettings(Window* window)
+	{
+		SimpleArcadesMusicManager::getInstance().init();
+
+		auto s = new GuiSettings(window, "MUSIC SETTINGS");
+
+		// --- 1. Background Music on/off ---
+		const auto musicEnabled = std::make_shared<SwitchComponent>(window);
+		musicEnabled->setState(SimpleArcadesMusicManager::getInstance().isEnabled());
+		s->addWithLabel("BACKGROUND MUSIC", musicEnabled);
+
+		// --- 2. Music Volume slider ---
+		auto musicVolume = std::make_shared<SliderComponent>(window, 0.f, 100.f, 1.f, "%");
+		musicVolume->setValue((float)SimpleArcadesMusicManager::getInstance().getVolumePercent());
+		s->addWithLabel("MUSIC VOLUME", musicVolume);
+
+		// --- 3. Playlist Mode ---
+		auto folders = SimpleArcadesMusicManager::getInstance().getAvailableFolders();
+
+		auto mode = std::make_shared<OptionListComponent<std::string>>(window, "PLAYLIST MODE", false);
+		mode->add("Shuffle All", "shuffle_all", SimpleArcadesMusicManager::getInstance().getMode() != "folder");
+		mode->add("Single Soundtrack", "folder", SimpleArcadesMusicManager::getInstance().getMode() == "folder");
+		s->addWithLabel("PLAYLIST MODE", mode);
+
+		// --- 4. Soundtrack folder selector ---
+		auto folderOpt = std::make_shared<OptionListComponent<std::string>>(window, "SOUNDTRACK", false);
+		if (folders.empty())
+		{
+			folderOpt->add("No folders found", "", true);
+		}
+		else
+		{
+			const std::string curFolder = SimpleArcadesMusicManager::getInstance().getFolder();
+			const bool hasCur = (std::find(folders.begin(), folders.end(), curFolder) != folders.end());
+			bool selected = false;
+
+			for (const auto& f : folders)
+			{
+				const bool isSel = hasCur ? (f == curFolder) : (!selected);
+				folderOpt->add(f, f, isSel);
+				if (isSel)
+					selected = true;
+			}
+		}
+		s->addWithLabel("SOUNDTRACK", folderOpt);
+
+		// --- 5. Show Track Popup toggle ---
+		const auto showPopup = std::make_shared<SwitchComponent>(window);
+		showPopup->setState(SimpleArcadesMusicManager::getInstance().getShowTrackPopup());
+		s->addWithLabel("SHOW TRACK POPUP", showPopup);
+
+		// --- 6. Play During Screensaver toggle ---
+		const auto playDuringSS = std::make_shared<SwitchComponent>(window);
+		playDuringSS->setState(SimpleArcadesMusicManager::getInstance().getPlayDuringScreensaver());
+		s->addWithLabel("PLAY DURING SCREENSAVER", playDuringSS);
+
+		// --- 7. Shuffle All Settings submenu ---
+		ComponentListRow shuffleRow;
+		shuffleRow.makeAcceptInputHandler([window]
+		{
+			openShuffleAllSettings(window);
+		});
+		shuffleRow.addElement(std::make_shared<TextComponent>(window,
+			"SHUFFLE ALL SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		s->addRow(shuffleRow);
+
+		// --- 8. Rescan Music Now action ---
+		ComponentListRow rescanRow;
+		rescanRow.makeAcceptInputHandler([window]
+		{
+			SimpleArcadesMusicManager::getInstance().rescanMusic();
+			window->setInfoPopup(new GuiInfoPopup(window, "Music rescanned!", 3000));
+		});
+		rescanRow.addElement(std::make_shared<TextComponent>(window,
+			"RESCAN MUSIC NOW", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		s->addRow(rescanRow);
+
+		// --- 9. Add Your Own Music (QR code viewer, hidden if no QR image) ---
+		const std::string qrPath = Utils::FileSystem::getHomePath() + "/simplearcades/media/qrcodes/qr_music_help.png";
+		if (Utils::FileSystem::exists(qrPath))
+		{
+			ComponentListRow addMusicRow;
+			addMusicRow.makeAcceptInputHandler([window, qrPath]
+			{
+				window->pushGui(new GuiImageViewer(window, qrPath, "SCAN TO ADD YOUR OWN MUSIC"));
+			});
+			addMusicRow.addElement(std::make_shared<TextComponent>(window,
+				"ADD YOUR OWN MUSIC", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+			s->addRow(addMusicRow);
+		}
+
+		// --- Save all settings on menu close ---
+		s->addSaveFunc([musicEnabled, musicVolume, mode, folderOpt, playDuringSS, showPopup]
+		{
+			SimpleArcadesMusicManager::getInstance().init();
+
+		SimpleArcadesMusicManager::getInstance().setVolumePercent((int)musicVolume->getValue());
+			SimpleArcadesMusicManager::getInstance().setMode(mode->getSelected());
+			SimpleArcadesMusicManager::getInstance().setFolder(folderOpt->getSelected());
+			SimpleArcadesMusicManager::getInstance().setPlayDuringScreensaver(playDuringSS->getState());
+			SimpleArcadesMusicManager::getInstance().setShowTrackPopup(showPopup->getState());
+			SimpleArcadesMusicManager::getInstance().setEnabled(musicEnabled->getState());
+
+			SimpleArcadesMusicManager::getInstance().saveConfig();
+		});
+
+		window->pushGui(s);
+	}
+
+// ============================================================================
+//  Game Launch Video Settings
+// ============================================================================
+
+namespace GameLaunchVideoConfig
+{
+	struct Settings
+	{
+		bool enabled;
+		int mode;    // 0 = RANDOM TIPS, 1 = STANDARD LOADING, 2 = CONTROL MAPPINGS
+		bool mute;
+
+		Settings() : enabled(true), mode(0), mute(false) {}
+	};
+
+	static Settings load()
+	{
+		Settings cfg;
+		const std::string path = SA_LAUNCH_VIDEO_CONFIG;
+		if (!Utils::FileSystem::exists(path))
+			return cfg;
+
+		std::ifstream file(path);
+		if (!file.good())
+			return cfg;
+
+		std::string line;
+		while (std::getline(file, line))
+		{
+			// Trim whitespace
+			while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
+				line.pop_back();
+
+			auto eq = line.find('=');
+			if (eq == std::string::npos)
+				continue;
+
+			std::string key = line.substr(0, eq);
+			std::string val = line.substr(eq + 1);
+
+			if (key == "enabled")
+				cfg.enabled = (val == "1");
+			else if (key == "mode")
+				cfg.mode = atoi(val.c_str());
+			else if (key == "mute")
+				cfg.mute = (val == "1");
+		}
+
+		return cfg;
+	}
+
+	static void save(const Settings& cfg)
+	{
+		const std::string path = SA_LAUNCH_VIDEO_CONFIG;
+
+		// Ensure parent directory tree exists (recursive)
+		size_t lastSlash = path.rfind('/');
+		if (lastSlash != std::string::npos)
+		{
+			std::string dir = path.substr(0, lastSlash);
+			if (!Utils::FileSystem::exists(dir))
+			{
+				std::string cmd = "mkdir -p \"" + dir + "\"";
+				system(cmd.c_str());
+			}
+		}
+
+		std::ofstream file(path);
+		if (!file.good())
+		{
+			LOG(LogError) << "Failed to write game launch video config: " << path;
+			return;
+		}
+
+		file << "enabled=" << (cfg.enabled ? "1" : "0") << "\n";
+		file << "mode=" << cfg.mode << "\n";
+		file << "mute=" << (cfg.mute ? "1" : "0") << "\n";
+	}
+}
+
+void openGameLaunchVideoSettings(Window* window)
+{
+	auto cfg = GameLaunchVideoConfig::load();
+
+	auto s = new GuiSettings(window, "GAME LAUNCH VIDEO SETTINGS");
+
+	// --- 1. Launch Videos ON/OFF ---
+	auto launchEnabled = std::make_shared<SwitchComponent>(window);
+	launchEnabled->setState(cfg.enabled);
+	s->addWithLabel("LAUNCH VIDEOS", launchEnabled);
+
+	// --- 2. Video Mode selector ---
+	auto videoMode = std::make_shared<OptionListComponent<std::string>>(window, "VIDEO MODE", false);
+	videoMode->add("RANDOM TIPS", "0", cfg.mode == 0);
+	videoMode->add("STANDARD LOADING", "1", cfg.mode == 1);
+	videoMode->add("CONTROL MAPPINGS", "2", cfg.mode == 2);
+	s->addWithLabel("VIDEO MODE", videoMode);
+
+	// --- 3. Mute Launch Sound ---
+	auto muteLaunch = std::make_shared<SwitchComponent>(window);
+	muteLaunch->setState(cfg.mute);
+	s->addWithLabel("MUTE LAUNCH SOUND", muteLaunch);
+
+	// --- Save ---
+	s->addSaveFunc([launchEnabled, videoMode, muteLaunch]
+	{
+		GameLaunchVideoConfig::Settings newCfg;
+		newCfg.enabled = launchEnabled->getState();
+		newCfg.mode = atoi(videoMode->getSelected().c_str());
+		newCfg.mute = muteLaunch->getState();
+		GameLaunchVideoConfig::save(newCfg);
+	});
+
+	window->pushGui(s);
+}
+
+GuiMenu::GuiMenu(Window* window) : GuiComponent(window), mMenu(window, "SIMPLE ARCADES MAIN MENU"), mVersion(window)
 {
 	bool isFullUI = UIModeController::getInstance()->isUIModeFull();
 
+	bool isKioskUI = UIModeController::getInstance()->isUIModeKiosk();
 	if (isFullUI) {
-		addEntry("SCRAPER", 0x777777FF, true, [this] { openScraperSettings(); });
-		addEntry("SOUND SETTINGS", 0x777777FF, true, [this] { openSoundSettings(); });
-		addEntry("UI SETTINGS", 0x777777FF, true, [this] { openUISettings(); });
-		addEntry("GAME COLLECTION SETTINGS", 0x777777FF, true, [this] { openCollectionSystemSettings(); });
-		addEntry("OTHER SETTINGS", 0x777777FF, true, [this] { openOtherSettings(); });
-		addEntry("CONFIGURE INPUT", 0x777777FF, true, [this] { openConfigInput(); });
+		addEntry("SCRAPER", SA_TEXT_COLOR, true, [this] { openScraperSettings(); });
+		addEntry("SOUND SETTINGS", SA_TEXT_COLOR, true, [this] { openSoundSettings(); });
+		addEntry("MUSIC SETTINGS", SA_TEXT_COLOR, true, [this] { openSimpleArcadesMusicSettings(mWindow); });
+		addEntry("GAME LAUNCH VIDEO SETTINGS", SA_TEXT_COLOR, true, [this] { openGameLaunchVideoSettings(mWindow); });
+		addEntry("UI SETTINGS", SA_TEXT_COLOR, true, [this] { openUISettings(); });
+		addEntry("GAME COLLECTION SETTINGS", SA_TEXT_COLOR, true, [this] { openCollectionSystemSettings(); });
+		addEntry("OTHER SETTINGS", SA_TEXT_COLOR, true, [this] { openOtherSettings(); });
 	} else {
-		addEntry("SOUND SETTINGS", 0x777777FF, true, [this] { openSoundSettings(); });
+		addEntry("SOUND SETTINGS", SA_TEXT_COLOR, true, [this] { openSoundSettings(); });
+		addEntry("MUSIC SETTINGS", SA_TEXT_COLOR, true, [this] { openSimpleArcadesMusicSettings(mWindow); });
+		addEntry("GAME LAUNCH VIDEO SETTINGS", SA_TEXT_COLOR, true, [this] { openGameLaunchVideoSettings(mWindow); });
+	}
+	
+	if (isFullUI || isKioskUI) {
+		addEntry("CONFIGURE INPUT", SA_TEXT_COLOR, true, [this] { openConfigInput(); });
+		if (isKioskUI) {
+			addEntry("SCREENSAVER SETTINGS", SA_TEXT_COLOR, true, [this] { openScreensaverOptions(); });
+		}
 	}
 
-	addEntry("QUIT", 0x777777FF, true, [this] {openQuitMenu(); });
+addEntry("QUIT", SA_TEXT_COLOR, true, [this] {openQuitMenu(); });
 
 	addChild(&mMenu);
 	addVersionInfo();
@@ -74,7 +799,7 @@ void GuiMenu::openScraperSettings()
 	openAndSave = [s, openAndSave] { s->save(); openAndSave(); };
 	row.makeAcceptInputHandler(openAndSave);
 
-	auto scrape_now = std::make_shared<TextComponent>(mWindow, "SCRAPE NOW", Font::get(FONT_SIZE_MEDIUM), 0x777777FF);
+	auto scrape_now = std::make_shared<TextComponent>(mWindow, "SCRAPE NOW", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR);
 	auto bracket = makeArrow(mWindow);
 	row.addElement(scrape_now, true);
 	row.addElement(bracket, false);
@@ -227,7 +952,7 @@ void GuiMenu::openUISettings()
 	// screensaver
 	ComponentListRow screensaver_row;
 	screensaver_row.elements.clear();
-	screensaver_row.addElement(std::make_shared<TextComponent>(mWindow, "SCREENSAVER SETTINGS", Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+	screensaver_row.addElement(std::make_shared<TextComponent>(mWindow, "SCREENSAVER SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 	screensaver_row.addElement(makeArrow(mWindow), false);
 	screensaver_row.makeAcceptInputHandler(std::bind(&GuiMenu::openScreensaverOptions, this));
 	s->addRow(screensaver_row);
@@ -501,13 +1226,44 @@ void GuiMenu::openOtherSettings()
 
 void GuiMenu::openConfigInput()
 {
-	Window* window = mWindow;
-	window->pushGui(new GuiMsgBox(window, "ARE YOU SURE YOU WANT TO CONFIGURE INPUT?", "YES",
-		[window] {
-		window->pushGui(new GuiDetectDevice(window, false, nullptr));
-	}, "NO", nullptr)
-	);
+    auto s = new GuiSettings(mWindow, "CONTROLLERS");
+    Window* window = mWindow;
 
+    // Helper: launch the existing external-controller detect/config flow
+    auto launchDetect = [window]() {
+        window->pushGui(new GuiDetectDevice(window, false, nullptr));
+    };
+
+    // 1) Configure /remap controller
+    {
+        ComponentListRow row;
+        row.makeAcceptInputHandler([window, launchDetect] {
+            window->pushGui(new GuiMsgBox(
+                window,
+                "ADD OR REMAP AN EXTERNAL CONTROLLER?",
+                "YES", launchDetect,
+                "NO", nullptr
+            ));
+        });
+        row.addElement(std::make_shared<TextComponent>(
+            window, "ADD / REMAP CONTROLLER", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR
+        ), true);
+        s->addRow(row);
+    }
+
+	// 2) Delete controller profile
+	{
+		ComponentListRow row;
+		row.makeAcceptInputHandler([this] {
+			openDeleteControllerProfile();
+		});
+		row.addElement(std::make_shared<TextComponent>(
+			mWindow, "DELETE CONTROLLER PROFILE", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR
+		), true);
+		s->addRow(row);
+	}
+
+    mWindow->pushGui(s);
 }
 
 void GuiMenu::openQuitMenu()
@@ -536,7 +1292,7 @@ void GuiMenu::openQuitMenu()
 		} else {
 			row.makeAcceptInputHandler(restart_es_fx);
 		}
-		row.addElement(std::make_shared<TextComponent>(window, "RESTART EMULATIONSTATION", Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+		row.addElement(std::make_shared<TextComponent>(window, "RESTART EMULATIONSTATION", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 		s->addRow(row);
 
 		if(Settings::getInstance()->getBool("ShowExit"))
@@ -554,7 +1310,7 @@ void GuiMenu::openQuitMenu()
 			} else {
 				row.makeAcceptInputHandler(quit_es_fx);
 			}
-			row.addElement(std::make_shared<TextComponent>(window, "QUIT EMULATIONSTATION", Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+			row.addElement(std::make_shared<TextComponent>(window, "QUIT EMULATIONSTATION", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 			s->addRow(row);
 		}
 	}
@@ -575,7 +1331,7 @@ void GuiMenu::openQuitMenu()
 	} else {
 		row.makeAcceptInputHandler(reboot_sys_fx);
 	}
-	row.addElement(std::make_shared<TextComponent>(window, "RESTART SYSTEM", Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+	row.addElement(std::make_shared<TextComponent>(window, "RESTART SYSTEM", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 	s->addRow(row);
 
 	auto static shutdown_sys_fx = [] {
@@ -594,7 +1350,7 @@ void GuiMenu::openQuitMenu()
 	} else {
 		row.makeAcceptInputHandler(shutdown_sys_fx);
 	}
-	row.addElement(std::make_shared<TextComponent>(window, "SHUTDOWN SYSTEM", Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+	row.addElement(std::make_shared<TextComponent>(window, "SHUTDOWN SYSTEM", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 	s->addRow(row);
 	mWindow->pushGui(s);
 }
@@ -603,9 +1359,10 @@ void GuiMenu::addVersionInfo()
 {
 	std::string  buildDate = (Settings::getInstance()->getBool("Debug") ? std::string( "   (" + Utils::String::toUpper(PROGRAM_BUILT_STRING) + ")") : (""));
 
-	mVersion.setFont(Font::get(FONT_SIZE_SMALL));
-	mVersion.setColor(0x5E5E5EFF);
-	mVersion.setText("EMULATIONSTATION V" + Utils::String::toUpper(PROGRAM_VERSION_STRING) + buildDate);
+	mVersion.setFont(saFont(FONT_SIZE_SMALL));
+	mVersion.setColor(SA_VERSION_COLOR);
+	// old versoin string mVersion.setText("EMULATIONSTATION V" + Utils::String::toUpper(PROGRAM_VERSION_STRING) + buildDate);
+	mVersion.setText("EMULATIONSTATION V12.0.1.SIMPLE.ARCADES");
 	mVersion.setHorizontalAlignment(ALIGN_CENTER);
 	addChild(&mVersion);
 }
@@ -626,7 +1383,7 @@ void GuiMenu::onSizeChanged()
 
 void GuiMenu::addEntry(const char* name, unsigned int color, bool add_arrow, const std::function<void()>& func)
 {
-	std::shared_ptr<Font> font = Font::get(FONT_SIZE_MEDIUM);
+	std::shared_ptr<Font> font = saFont(FONT_SIZE_MEDIUM);
 
 	// populate the list
 	ComponentListRow row;

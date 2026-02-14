@@ -38,11 +38,27 @@ int runSystemCommand(const std::string& cmd_utf8)
 	std::wstring wchar_str = converter.from_bytes(cmd_utf8);
 	return _wsystem(wchar_str.c_str());
 #else
-	return system(cmd_utf8.c_str());
+	int ret = system(cmd_utf8.c_str());
+
+	// When a game exits, onend.sh may have created /tmp/es-restart
+	// to signal that ES should restart (e.g. after a save state).
+	// Set a global flag HERE — at the exact moment system() returns.
+	// We cannot use SDL_PushEvent(SDL_QUIT) because ES flushes the
+	// event queue during its post-game resume/reinit sequence.
+	// The main loop checks pendingRestart directly — no events to
+	// consume, no file I/O, just a memory read.
+	if (access("/tmp/es-restart", F_OK) == 0)
+	{
+		LOG(LogInfo) << "SA_RESTART_TRIGGER: /tmp/es-restart detected after system command, setting pendingRestart";
+		pendingRestart = true;
+	}
+
+	return ret;
 #endif
 }
 
 QuitMode quitMode = QuitMode::QUIT;
+bool pendingRestart = false;
 
 int quitES(QuitMode mode)
 {
@@ -78,12 +94,12 @@ void processQuitMode()
 	case QuitMode::REBOOT:
 		LOG(LogInfo) << "Rebooting system";
 		touch("/tmp/es-sysrestart");
-		runRestartCommand();
+		// Shell wrapper plays reboot video then calls sudo reboot
 		break;
 	case QuitMode::SHUTDOWN:
 		LOG(LogInfo) << "Shutting system down";
 		touch("/tmp/es-shutdown");
-		runShutdownCommand();
+		// Shell wrapper plays shutdown video then calls sudo poweroff
 		break;
 	default:
 		// No-op to prevent compiler warnings

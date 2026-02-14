@@ -1,0 +1,120 @@
+===============================================================================
+ Simple Arcades — Central Style Sheet v2 (Complete)
+===============================================================================
+
+NEW FILE (1):
+  es-core/src/SAStyle.h     ← THE ONE FILE TO EDIT FOR ALL STYLING
+
+MODIFIED FILES (40):
+  es-core/src/
+    Window.cpp                          — loading screen colors/fonts
+    HelpStyle.cpp                       — help bar icon/text colors
+    components/
+      MenuComponent.h                   — title font, addWithLabel font/color
+      MenuComponent.cpp                 — title color, arrow/button font
+      ComponentList.cpp                 — selector bar, row separators
+      SliderComponent.cpp               — slider line/text color, font
+      SwitchComponent.cpp               — toggle icon sizing font
+      OptionListComponent.h             — option text font/color
+      TextComponent.cpp                 — default font
+      TextEditComponent.cpp             — text input font
+      ButtonComponent.cpp               — button text colors
+      BusyComponent.cpp                 — "WORKING..." font/color
+      DateTimeEditComponent.cpp         — date picker font/color
+      IList.h                           — title overlay font
+      TextListComponent.h (es-app)      — game list default font
+    guis/
+      GuiMsgBox.cpp                     — message box font/color
+      GuiDetectDevice.cpp               — device detection font/color
+      GuiInputConfig.cpp                — controller config font/colors
+      GuiTextEditPopup.cpp              — text editor title font/color
+
+  es-app/src/
+    components/
+      ScraperSearchComponent.cpp        — scraper results font/color
+    guis/
+      GuiMenu.cpp                       — main menu (includes Pass 2 music)
+      GuiGamelistOptions.cpp            — gamelist options menu
+      GuiGamelistFilter.cpp             — gamelist filter menu
+      GuiCollectionSystemsOptions.cpp   — collection settings
+      GuiRandomCollectionOptions.cpp    — random collection settings
+      GuiScreensaverOptions.cpp         — screensaver submenu helper
+      GuiGeneralScreensaverOptions.cpp  — screensaver type selection
+      GuiSlideshowScreensaverOptions.cpp — slideshow settings
+      GuiVideoScreensaverOptions.cpp    — video screensaver settings
+      GuiSimpleArcadesScreensaverGalleryOptions.cpp — gallery screensaver
+      GuiScraperMulti.cpp               — multi-scraper progress
+      GuiGameScraper.cpp                — single game scraper
+      GuiMetaDataEd.cpp                 — metadata editor
+      GuiInfoPopup.cpp                  — toast popup
+      GuiImageViewer.cpp                — fullscreen image viewer
+      GuiMusicPopup.cpp                 — now playing popup
+    views/
+      SystemView.cpp                    — system carousel font
+      gamelist/DetailedGameListView.cpp  — detailed view defaults
+      gamelist/GridGameListView.cpp      — grid view defaults
+      gamelist/VideoGameListView.cpp     — video view defaults
+
+UNCHANGED FILES (not included — keep your existing versions):
+  es-core/src/resources/Font.cpp
+  es-core/src/HelpStyle.h
+  es-core/src/components/ButtonComponent.h
+  es-core/src/components/HelpComponent.h
+  es-core/src/components/HelpComponent.cpp
+  es-core/src/components/DateTimeEditComponent.h
+
+===============================================================================
+ INSTALLATION
+===============================================================================
+
+  1. Place SAStyle.h into es-core/src/ (new file)
+  2. Overwrite all 40 modified files in your source tree
+  3. Rebuild via Docker as usual
+
+  NOTE: No CMakeLists.txt changes needed — SAStyle.h is header-only.
+
+===============================================================================
+ HOW TO CUSTOMIZE
+===============================================================================
+
+Open SAStyle.h. Every visual constant is there with comments:
+
+  FONT
+    SA_FONT_PATH              — Custom .ttf file path ("" for built-in)
+
+  COLORS (RRGGBBAA hex)
+    SA_TITLE_COLOR            — Menu headings
+    SA_TEXT_COLOR              — All menu entry text
+    SA_SUBTITLE_COLOR         — Secondary/dim text
+    SA_GAMENAME_COLOR         — Game name in gamelist views
+    SA_SECTION_HEADER_COLOR   — Folder headers in submenus
+    SA_VERSION_COLOR          — Version string in main menu
+    SA_SCRAPER_SUBTITLE_COLOR — Scraper progress subtitle
+    SA_BUTTON_TEXT_FOCUSED    — Button text when highlighted
+    SA_BUTTON_TEXT_UNFOCUSED  — Button text when not highlighted
+    SA_INPUT_ICON_COLOR       — Controller config icons
+    SA_INPUT_MAPPED_COLOR     — Controller config mapped text
+    SA_SELECTOR_COLOR         — Highlighted row bar
+    SA_SELECTOR_EDGE_COLOR    — Highlight bar edges
+    SA_SEPARATOR_COLOR        — Lines between menu rows
+    SA_SLIDER_LINE_COLOR      — Slider track line
+    SA_SLIDER_TEXT_COLOR      — Slider value readout
+    SA_HELP_ICON_COLOR        — Help bar icons
+    SA_HELP_TEXT_COLOR         — Help bar text
+    SA_POPUP_TEXT_COLOR        — Toast popup text
+    SA_LOADING_BG_COLOR        — Loading bar background
+    SA_LOADING_BAR_COLOR       — Loading bar fill
+    SA_LOADING_TEXT_COLOR      — Loading screen text
+
+  Change a value, recompile, done.
+
+===============================================================================
+ WHAT THIS DOES NOT CONTROL
+===============================================================================
+
+  - Menu background texture (:/frame.png NinePatch) — replace the PNG
+  - Theme-driven overrides — XML themes can override fonts/colors at runtime
+  - SVG icons (on.svg, off.svg, arrow.svg, etc.) — replace the SVG files
+  - System carousel colors — theme-driven (0xFFFFFFD8 etc. in SystemView)
+
+===============================================================================

@@ -1,12 +1,13 @@
 #pragma once
 #ifndef ES_CORE_WINDOW_H
-#define ES_CORE_WInDOW_H
+#define ES_CORE_WINDOW_H
 
 #include "HelpPrompt.h"
 #include "InputConfig.h"
 #include "Settings.h"
 
 #include <memory>
+#include <string>
 
 class SystemData;
 class FileData;
@@ -77,6 +78,20 @@ public:
 	bool cancelScreenSaver();
 	void renderScreenSaver();
 
+	// Restart reason: reads ~/.restart_reason on startup to determine
+	// which boot image and loading text to show. The file is deleted
+	// after reading. If no file exists, it's a normal (cold) boot.
+	void readRestartReason();
+	const std::string& getRestartReason() const { return mRestartReason; }
+	bool hasRestartReason() const { return !mRestartReason.empty(); }
+
+	// Returns the loading text appropriate for the current restart reason.
+	// If no reason is set, returns the provided default text unchanged.
+	std::string getRestartText(const std::string& defaultText) const;
+
+	// Returns the resolved boot image path (set once during readRestartReason).
+	const std::string& getBootImagePath() const { return mBootImagePath; }
+
 private:
 	void onSleep();
 	void onWake();
@@ -107,6 +122,10 @@ private:
 	unsigned int mTimeSinceLastInput;
 
 	bool mRenderedHelpPrompts;
+
+	std::string mRestartReason;
+	std::string mBootImagePath;  // resolved once in readRestartReason()
+	std::unique_ptr<ImageComponent> mSplashImage; // cached loading screen image
 };
 
 #endif // ES_CORE_WINDOW_H

@@ -17,6 +17,11 @@ enum QuitMode
 	REBOOT = 3
 };
 
+// Set by runSystemCommand() when /tmp/es-restart is detected after a game exits.
+// Checked by the main loop to trigger a clean ES restart. This flag cannot be
+// consumed or flushed like SDL events can during the post-game resume sequence.
+extern bool pendingRestart;
+
 int runSystemCommand(const std::string& cmd_utf8); // run a utf-8 encoded in the shell (requires wstring conversion on Windows)
 int quitES(QuitMode mode = QuitMode::QUIT);
 void processQuitMode();

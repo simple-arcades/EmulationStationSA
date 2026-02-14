@@ -1,4 +1,5 @@
 #include "guis/GuiGamelistFilter.h"
+#include "SAStyle.h"
 
 #include "components/OptionListComponent.h"
 #include "views/UIModeController.h"
@@ -21,7 +22,7 @@ void GuiGamelistFilter::initializeMenu()
 
 	// show filtered menu
 	row.elements.clear();
-	row.addElement(std::make_shared<TextComponent>(mWindow, "RESET ALL FILTERS", Font::get(FONT_SIZE_MEDIUM), 0x777777FF), true);
+	row.addElement(std::make_shared<TextComponent>(mWindow, "RESET ALL FILTERS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 	row.makeAcceptInputHandler(std::bind(&GuiGamelistFilter::resetAllFilters, this));
 	mMenu.addRow(row);
 	row.elements.clear();

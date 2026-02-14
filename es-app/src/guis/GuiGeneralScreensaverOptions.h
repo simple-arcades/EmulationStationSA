@@ -13,6 +13,7 @@ public:
 private:
 	void openVideoScreensaverOptions();
 	void openSlideshowScreensaverOptions();
+	void openSimpleArcadesScreensaverGallery();
 };
 
 #endif // ES_APP_GUIS_GUI_GENERAL_SCREENSAVER_OPTIONS_H

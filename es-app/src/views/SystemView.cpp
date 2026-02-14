@@ -1,4 +1,5 @@
 #include "views/SystemView.h"
+#include "SAStyle.h"
 
 #include "animations/LambdaAnimation.h"
 #include "guis/GuiMsgBox.h"
@@ -16,7 +17,7 @@ const int logoBuffersRight[] = { 1, 2, 5 };
 
 SystemView::SystemView(Window* window) : IList<SystemViewData, SystemData*>(window, LIST_SCROLL_STYLE_SLOW, LIST_ALWAYS_LOOP),
 										 mViewNeedsReload(true),
-										 mSystemInfo(window, "SYSTEM INFO", Font::get(FONT_SIZE_SMALL), 0x33333300, ALIGN_CENTER)
+										 mSystemInfo(window, "SYSTEM INFO", saFont(FONT_SIZE_SMALL), 0x33333300, ALIGN_CENTER)
 {
 	mCamOffset = 0;
 	mExtrasCamOffset = 0;
@@ -64,7 +65,7 @@ void SystemView::populate()
 				// no logo in theme; use text
 				TextComponent* text = new TextComponent(mWindow,
 					(*it)->getName(),
-					Font::get(FONT_SIZE_LARGE),
+					saFont(FONT_SIZE_LARGE),
 					0x000000FF,
 					ALIGN_CENTER);
 				text->setSize(mCarousel.logoSize * mCarousel.logoScale);

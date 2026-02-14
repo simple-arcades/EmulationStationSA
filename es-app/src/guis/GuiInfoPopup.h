@@ -8,10 +8,20 @@
 class ComponentGrid;
 class NinePatchComponent;
 
+// Popup screen position.
+enum PopupPosition
+{
+	POPUP_TOP_CENTER,
+	POPUP_TOP_RIGHT,
+	POPUP_BOTTOM_CENTER,
+	POPUP_BOTTOM_LEFT,
+	POPUP_BOTTOM_RIGHT
+};
+
 class GuiInfoPopup : public GuiComponent, public Window::InfoPopup
 {
 public:
-	GuiInfoPopup(Window* window, std::string message, int duration, int fadein = 500, int fadeout = 500);
+	GuiInfoPopup(Window* window, std::string message, int duration, int fadein = 500, int fadeout = 500, PopupPosition pos = POPUP_TOP_CENTER);
 	~GuiInfoPopup();
 	void render(const Transform4x4f& parentTrans) override;
 	inline void stop() override { running = false; };

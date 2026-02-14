@@ -1,4 +1,5 @@
 #include "guis/GuiGameScraper.h"
+#include "SAStyle.h"
 
 #include "components/ButtonComponent.h"
 #include "components/MenuComponent.h"
@@ -20,13 +21,13 @@ GuiGameScraper::GuiGameScraper(Window* window, ScraperSearchParams params, std::
 	// row 0 is a spacer
 
 	mGameName = std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(Utils::FileSystem::getFileName(mSearchParams.game->getPath())),
-		Font::get(FONT_SIZE_MEDIUM), 0x777777FF, ALIGN_CENTER);
+		saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mGameName, Vector2i(0, 1), false, true);
 
 	// row 2 is a spacer
 
-	mSystemName = std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(mSearchParams.system->getFullName()), Font::get(FONT_SIZE_SMALL),
-		0x888888FF, ALIGN_CENTER);
+	mSystemName = std::make_shared<TextComponent>(mWindow, Utils::String::toUpper(mSearchParams.system->getFullName()), saFont(FONT_SIZE_SMALL),
+		SA_SCRAPER_SUBTITLE_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mSystemName, Vector2i(0, 3), false, true);
 
 	// row 4 is a spacer
