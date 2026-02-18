@@ -43,7 +43,7 @@ public:
 
 		  Note that no all games contain values for these, so we default to "box-2D" since it's the most common.
 		**/
-		std::string media_name = "box-2D";
+		std::string media_name = "mixrbv1";
 
 		// Which Region to use when selecting the artwork
 		// Applies to: artwork, name of the game, date of release

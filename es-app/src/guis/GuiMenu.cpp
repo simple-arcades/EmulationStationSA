@@ -9,6 +9,13 @@
 #include "guis/GuiMsgBox.h"
 #include "guis/GuiScraperStart.h"
 #include "guis/GuiSettings.h"
+#include "guis/GuiShowHideSystems.h"
+#include "guis/GuiControllerSettings.h"
+#include "guis/GuiWifiSettings.h"
+#include "guis/GuiBluetoothSettings.h"
+#include "guis/GuiNetplaySettings.h"
+#include "guis/GuiNetplayLobby.h"
+#include "guis/GuiNetplayLan.h"
 #include "views/UIModeController.h"
 #include "views/ViewController.h"
 #include "CollectionSystemManager.h"
@@ -25,7 +32,7 @@
 #include "views/gamelist/IGameListView.h"
 #include "guis/GuiInfoPopup.h"
 #include "SAStyle.h"
-#include "guis/GuiImageViewer.h"
+#include "guis/GuiImagePopup.h"
 #include "InputManager.h"
 #include "utils/FileSystemUtil.h"
 #include "utils/StringUtil.h"
@@ -590,13 +597,13 @@ void GuiMenu::openDeleteControllerProfile()
 		s->addRow(rescanRow);
 
 		// --- 9. Add Your Own Music (QR code viewer, hidden if no QR image) ---
-		const std::string qrPath = Utils::FileSystem::getHomePath() + "/simplearcades/media/qrcodes/qr_music_help.png";
+		const std::string qrPath = Utils::FileSystem::getHomePath() + "/simplearcades/media/images/qrcodes/qr_music_help.png";
 		if (Utils::FileSystem::exists(qrPath))
 		{
 			ComponentListRow addMusicRow;
 			addMusicRow.makeAcceptInputHandler([window, qrPath]
 			{
-				window->pushGui(new GuiImageViewer(window, qrPath, "SCAN TO ADD YOUR OWN MUSIC"));
+				window->pushGui(new GuiImagePopup(window, "ADD YOUR OWN MUSIC", qrPath, "SCAN TO ADD YOUR OWN MUSIC"));
 			});
 			addMusicRow.addElement(std::make_shared<TextComponent>(window,
 				"ADD YOUR OWN MUSIC", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
@@ -740,36 +747,796 @@ void openGameLaunchVideoSettings(Window* window)
 GuiMenu::GuiMenu(Window* window) : GuiComponent(window), mMenu(window, "SIMPLE ARCADES MAIN MENU"), mVersion(window)
 {
 	bool isFullUI = UIModeController::getInstance()->isUIModeFull();
-
 	bool isKioskUI = UIModeController::getInstance()->isUIModeKiosk();
-	if (isFullUI) {
-		addEntry("SCRAPER", SA_TEXT_COLOR, true, [this] { openScraperSettings(); });
-		addEntry("SOUND SETTINGS", SA_TEXT_COLOR, true, [this] { openSoundSettings(); });
-		addEntry("MUSIC SETTINGS", SA_TEXT_COLOR, true, [this] { openSimpleArcadesMusicSettings(mWindow); });
-		addEntry("GAME LAUNCH VIDEO SETTINGS", SA_TEXT_COLOR, true, [this] { openGameLaunchVideoSettings(mWindow); });
-		addEntry("UI SETTINGS", SA_TEXT_COLOR, true, [this] { openUISettings(); });
-		addEntry("GAME COLLECTION SETTINGS", SA_TEXT_COLOR, true, [this] { openCollectionSystemSettings(); });
-		addEntry("OTHER SETTINGS", SA_TEXT_COLOR, true, [this] { openOtherSettings(); });
-	} else {
-		addEntry("SOUND SETTINGS", SA_TEXT_COLOR, true, [this] { openSoundSettings(); });
-		addEntry("MUSIC SETTINGS", SA_TEXT_COLOR, true, [this] { openSimpleArcadesMusicSettings(mWindow); });
-		addEntry("GAME LAUNCH VIDEO SETTINGS", SA_TEXT_COLOR, true, [this] { openGameLaunchVideoSettings(mWindow); });
-	}
-	
-	if (isFullUI || isKioskUI) {
-		addEntry("CONFIGURE INPUT", SA_TEXT_COLOR, true, [this] { openConfigInput(); });
-		if (isKioskUI) {
-			addEntry("SCREENSAVER SETTINGS", SA_TEXT_COLOR, true, [this] { openScreensaverOptions(); });
-		}
+
+	// FULL: FACTORY TOOLS, ONLINE PLAY, SETTINGS, QUIT
+	// KIOSK: ONLINE PLAY, SETTINGS, QUIT
+	// KID: QUIT
+
+	if (isFullUI)
+	{
+		addEntry("FACTORY TOOLS", SA_TEXT_COLOR, true, [this] { openFactoryTools(); });
 	}
 
-addEntry("QUIT", SA_TEXT_COLOR, true, [this] {openQuitMenu(); });
+	if (isFullUI || isKioskUI)
+	{
+		addEntry("ONLINE PLAY", SA_TEXT_COLOR, true, [this] { openOnlinePlay(); });
+		addEntry("SETTINGS", SA_TEXT_COLOR, true, [this] { openSettings(); });
+		addEntry("USER RESOURCES", SA_TEXT_COLOR, true, [this] { openUserResources(); });
+	}
+
+	addEntry("QUIT", SA_TEXT_COLOR, true, [this] { openQuitMenu(); });
 
 	addChild(&mMenu);
 	addVersionInfo();
 	setSize(mMenu.getSize());
 	setPosition((Renderer::getScreenWidth() - mSize.x()) / 2, Renderer::getScreenHeight() * 0.15f);
 }
+
+// ============================================================================
+//  ONLINE PLAY — top-level submenu (Full + Kiosk)
+// ============================================================================
+
+void GuiMenu::openOnlinePlay()
+{
+	auto s = new GuiSettings(mWindow, "ONLINE PLAY");
+	Window* window = mWindow;
+
+	// BROWSE LAN GAMES
+	ComponentListRow lanRow;
+	lanRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"BROWSE LAN GAMES", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	lanRow.addElement(makeArrow(mWindow), false);
+	lanRow.makeAcceptInputHandler([this] { openBrowseLanGames(); });
+	s->addRow(lanRow);
+
+	// BROWSE ONLINE GAMES
+	ComponentListRow onlineRow;
+	onlineRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"BROWSE ONLINE GAMES", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	onlineRow.addElement(makeArrow(mWindow), false);
+	onlineRow.makeAcceptInputHandler([this] { openBrowseOnlineGames(); });
+	s->addRow(onlineRow);
+
+	// HOW TO HOST
+	ComponentListRow howRow;
+	howRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"HOW TO HOST", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	howRow.addElement(makeArrow(mWindow), false);
+	howRow.makeAcceptInputHandler([window] {
+		std::string imgPath = "/home/pi/simplearcades/media/images/ui/netplay_how_to_host.png";
+		std::string text =
+			"TO HOST A GAME:\n"
+			"1. NAVIGATE TO A GAME\n"
+			"2. PRESS OPTIONS TO OPEN GAME OPTIONS\n"
+			"3. SELECT PLAY ONLINE\n"
+			"4. SELECT HOST THIS GAME\n"
+			"5. PRESS START TO BEGIN";
+
+		if (access(imgPath.c_str(), F_OK) == 0)
+			window->pushGui(new GuiImagePopup(window, "HOW TO HOST", imgPath, text));
+		else
+			window->pushGui(new GuiMsgBox(window, text, "CLOSE", nullptr));
+	});
+	s->addRow(howRow);
+
+	// SETTINGS (netplay config)
+	ComponentListRow settingsRow;
+	settingsRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	settingsRow.addElement(makeArrow(mWindow), false);
+	settingsRow.makeAcceptInputHandler([this] { openNetplaySettings(); });
+	s->addRow(settingsRow);
+
+	mWindow->pushGui(s);
+}
+
+void GuiMenu::openBrowseOnlineGames()
+{
+	mWindow->pushGui(new GuiNetplayLobby(mWindow));
+}
+
+void GuiMenu::openBrowseLanGames()
+{
+	mWindow->pushGui(new GuiNetplayLan(mWindow));
+}
+
+// ============================================================================
+//  SETTINGS — top-level submenu (Full + Kiosk)
+// ============================================================================
+
+void GuiMenu::openSettings()
+{
+	auto s = new GuiSettings(mWindow, "SETTINGS");
+	bool isFullUI = UIModeController::getInstance()->isUIModeFull();
+
+	// BLUETOOTH
+	ComponentListRow btRow;
+	btRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"BLUETOOTH", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	btRow.addElement(makeArrow(mWindow), false);
+	btRow.makeAcceptInputHandler([this] { openBluetoothSettings(); });
+	s->addRow(btRow);
+
+	// CHECK FOR UPDATES
+	{
+		ComponentListRow row;
+		row.addElement(std::make_shared<TextComponent>(mWindow,
+			"CHECK FOR UPDATES", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.addElement(makeArrow(mWindow), false);
+		Window* window = mWindow;
+		row.makeAcceptInputHandler([window] {
+			launchExternalScript(window,
+				Utils::FileSystem::getHomePath() +
+				"/simplearcades/scripts/utilities/update_system.sh", true);
+		});
+		s->addRow(row);
+	}
+
+	// GAME COLLECTION (Full only)
+	if (isFullUI)
+	{
+		ComponentListRow collRow;
+		collRow.addElement(std::make_shared<TextComponent>(mWindow,
+			"GAME COLLECTION", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		collRow.addElement(makeArrow(mWindow), false);
+		collRow.makeAcceptInputHandler([this] { openCollectionSystemSettings(); });
+		s->addRow(collRow);
+	}
+
+	// GAMEPLAY
+	ComponentListRow gameplayRow;
+	gameplayRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"GAMEPLAY", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	gameplayRow.addElement(makeArrow(mWindow), false);
+	gameplayRow.makeAcceptInputHandler([this] { openGameplaySettings(); });
+	s->addRow(gameplayRow);
+
+	// INPUT
+	ComponentListRow inputRow;
+	inputRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"INPUT", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	inputRow.addElement(makeArrow(mWindow), false);
+	inputRow.makeAcceptInputHandler([this] { openInputSettings(); });
+	s->addRow(inputRow);
+
+	// LIGHTGUN SETTINGS
+	{
+		ComponentListRow row;
+		row.addElement(std::make_shared<TextComponent>(mWindow,
+			"LIGHTGUN SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.addElement(makeArrow(mWindow), false);
+		Window* window = mWindow;
+		row.makeAcceptInputHandler([window] {
+			launchExternalScript(window,
+				Utils::FileSystem::getHomePath() +
+				"/simplearcades/scripts/utilities/sinden_lightgun_menu.sh", false);
+		});
+		s->addRow(row);
+	}
+
+	// MUSIC
+	ComponentListRow musicRow;
+	musicRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"MUSIC", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	musicRow.addElement(makeArrow(mWindow), false);
+	musicRow.makeAcceptInputHandler([this] { openSimpleArcadesMusicSettings(mWindow); });
+	s->addRow(musicRow);
+
+	// SCREENSAVER
+	ComponentListRow ssRow;
+	ssRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"SCREENSAVER", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	ssRow.addElement(makeArrow(mWindow), false);
+	ssRow.makeAcceptInputHandler([this] { openScreensaverOptions(); });
+	s->addRow(ssRow);
+
+	// TIME ZONE
+	{
+		ComponentListRow tzRow;
+		tzRow.addElement(std::make_shared<TextComponent>(mWindow,
+			"TIME ZONE", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		tzRow.addElement(makeArrow(mWindow), false);
+		tzRow.makeAcceptInputHandler([this] { openTimezoneSettings(); });
+		s->addRow(tzRow);
+	}
+
+	// USER INTERFACE
+	ComponentListRow uiRow;
+	uiRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"USER INTERFACE", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	uiRow.addElement(makeArrow(mWindow), false);
+	uiRow.makeAcceptInputHandler([this] { openUserInterfaceSettings(); });
+	s->addRow(uiRow);
+
+	// WI-FI
+	ComponentListRow wifiRow;
+	wifiRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"WI-FI", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	wifiRow.addElement(makeArrow(mWindow), false);
+	wifiRow.makeAcceptInputHandler([this] { openWifiSettings(); });
+	s->addRow(wifiRow);
+
+	mWindow->pushGui(s);
+}
+
+// ============================================================================
+//  SETTINGS > GAMEPLAY
+// ============================================================================
+
+void GuiMenu::openGameplaySettings()
+{
+	auto s = new GuiSettings(mWindow, "GAMEPLAY");
+	Window* window = mWindow;
+
+	// GAME LAUNCH VIDEO SETTINGS
+	ComponentListRow row;
+	row.addElement(std::make_shared<TextComponent>(mWindow,
+		"GAME LAUNCH VIDEO SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	row.addElement(makeArrow(mWindow), false);
+	row.makeAcceptInputHandler([window] { openGameLaunchVideoSettings(window); });
+	s->addRow(row);
+
+	mWindow->pushGui(s);
+}
+
+// ============================================================================
+//  SETTINGS > INPUT
+// ============================================================================
+
+void GuiMenu::openInputSettings()
+{
+	auto s = new GuiSettings(mWindow, "INPUT");
+
+	// CONFIGURE INPUT
+	ComponentListRow configRow;
+	configRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"CONFIGURE INPUT", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	configRow.addElement(makeArrow(mWindow), false);
+	configRow.makeAcceptInputHandler([this] { openConfigInput(); });
+	s->addRow(configRow);
+
+	// EXTERNAL CONTROLLER SETTINGS
+	ComponentListRow ctrlRow;
+	ctrlRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"EXTERNAL CONTROLLER SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	ctrlRow.addElement(makeArrow(mWindow), false);
+	ctrlRow.makeAcceptInputHandler([this] { openControllerSettings(); });
+	s->addRow(ctrlRow);
+
+	// TEST CONTROLS
+	{
+		ComponentListRow row;
+		row.addElement(std::make_shared<TextComponent>(mWindow,
+			"TEST CONTROLS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.addElement(makeArrow(mWindow), false);
+		Window* window = mWindow;
+		row.makeAcceptInputHandler([window] {
+			LOG(LogInfo) << "GuiMenu: Launching control tester";
+
+			AudioManager::getInstance()->deinit();
+			VolumeControl::getInstance()->deinit();
+			InputManager::getInstance()->deinit();
+			window->deinit();
+
+			::system("clear >/dev/tty1 2>/dev/null; "
+			         "printf '\\033[?25l' >/dev/tty1 2>/dev/null");
+
+			SimpleArcadesMusicManager::getInstance().onGameLaunched();
+
+			std::string testerPath = Utils::FileSystem::getHomePath() +
+				"/RetroPie/roms/tools/control_tester.py";
+			std::string cmd = "python3 \"" + testerPath + "\" >/dev/null 2>&1";
+			runSystemCommand(cmd);
+
+			::system("printf '\\033[?25h' >/dev/tty1 2>/dev/null");
+
+			SimpleArcadesMusicManager::getInstance().onGameReturned();
+
+			window->init();
+			InputManager::getInstance()->init();
+			VolumeControl::getInstance()->init();
+			window->normalizeNextUpdate();
+		});
+		s->addRow(row);
+	}
+
+	mWindow->pushGui(s);
+}
+
+// ============================================================================
+//  SETTINGS > USER INTERFACE
+// ============================================================================
+
+void GuiMenu::openUserInterfaceSettings()
+{
+	auto s = new GuiSettings(mWindow, "USER INTERFACE");
+
+	// SHOW / HIDE SYSTEMS
+	ComponentListRow row;
+	row.addElement(std::make_shared<TextComponent>(mWindow,
+		"SHOW / HIDE SYSTEMS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	row.addElement(makeArrow(mWindow), false);
+	row.makeAcceptInputHandler([this] { openShowHideSystems(); });
+	s->addRow(row);
+
+	mWindow->pushGui(s);
+}
+
+// ============================================================================
+//  USER RESOURCES — top-level submenu (Full + Kiosk)
+// ============================================================================
+
+void GuiMenu::launchExternalScript(Window* window, const std::string& scriptPath,
+                                     bool needsSudo)
+{
+	if (access(scriptPath.c_str(), F_OK) != 0)
+	{
+		window->pushGui(new GuiMsgBox(window,
+			"SCRIPT NOT FOUND:\n\n" + scriptPath +
+			"\n\nPLEASE CONTACT SUPPORT.",
+			"OK", nullptr));
+		return;
+	}
+
+	LOG(LogInfo) << "GuiMenu: Launching external script: " << scriptPath;
+
+	AudioManager::getInstance()->deinit();
+	VolumeControl::getInstance()->deinit();
+	InputManager::getInstance()->deinit();
+	window->deinit();
+
+	::system("clear >/dev/tty1 2>/dev/null; "
+	         "printf '\\033[?25l' >/dev/tty1 2>/dev/null");
+
+	SimpleArcadesMusicManager::getInstance().onGameLaunched();
+
+	// Build command with joy2key wrapper for controller support in dialog/whiptail
+	// joy2key maps joystick to keyboard so shell script menus work with arcade controls
+	std::string joy2keyBin = "/opt/retropie/admin/joy2key/joy2key";
+	std::string scriptCmd;
+	if (needsSudo)
+		scriptCmd = "sudo bash \"" + scriptPath + "\"";
+	else
+		scriptCmd = "bash \"" + scriptPath + "\"";
+
+	std::string cmd;
+	if (access(joy2keyBin.c_str(), F_OK) == 0)
+	{
+		// Start joy2key before script, stop after
+		// Maps: up/down/left/right/enter/tab/esc (standard dialog navigation)
+		cmd = joy2keyBin + " start; "
+		      + scriptCmd + "; "
+		      + joy2keyBin + " stop";
+	}
+	else
+	{
+		// Fallback: use retropie_packages.sh launch if joy2key not found directly
+		std::string rpLauncher = "/home/pi/RetroPie-Setup/retropie_packages.sh";
+		if (access(rpLauncher.c_str(), F_OK) == 0)
+		{
+			cmd = "sudo " + rpLauncher + " retropiemenu launch \"" + scriptPath + "\" </dev/tty >/dev/tty";
+		}
+		else
+		{
+			// Last resort: run without controller support
+			cmd = scriptCmd + " </dev/tty >/dev/tty";
+		}
+	}
+
+	runSystemCommand(cmd);
+
+	::system("printf '\\033[?25h' >/dev/tty1 2>/dev/null");
+
+	SimpleArcadesMusicManager::getInstance().onGameReturned();
+
+	window->init();
+	InputManager::getInstance()->init();
+	VolumeControl::getInstance()->init();
+	window->normalizeNextUpdate();
+}
+
+void GuiMenu::openUserResources()
+{
+	auto s = new GuiSettings(mWindow, "USER RESOURCES");
+	Window* window = mWindow;
+
+	// HOW-TO VIDEOS
+	{
+		ComponentListRow row;
+		row.addElement(std::make_shared<TextComponent>(mWindow,
+			"HOW-TO VIDEOS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.addElement(makeArrow(mWindow), false);
+		row.makeAcceptInputHandler([this] { openHowToVideos(); });
+		s->addRow(row);
+	}
+
+	// REMOTE SUPPORT
+	{
+		ComponentListRow row;
+		row.addElement(std::make_shared<TextComponent>(mWindow,
+			"REMOTE SUPPORT", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.addElement(makeArrow(mWindow), false);
+		row.makeAcceptInputHandler([window] {
+			launchExternalScript(window,
+				Utils::FileSystem::getHomePath() +
+				"/simplearcades/scripts/utilities/remote_support.sh", true);
+		});
+		s->addRow(row);
+	}
+
+	// USERS MANUAL
+	{
+		ComponentListRow row;
+		row.addElement(std::make_shared<TextComponent>(mWindow,
+			"USERS MANUAL", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.addElement(makeArrow(mWindow), false);
+		row.makeAcceptInputHandler([window] {
+			std::string qrPath = Utils::FileSystem::getHomePath() +
+				"/simplearcades/media/images/qrcodes/qr_users_manual.png";
+			if (access(qrPath.c_str(), F_OK) == 0)
+				window->pushGui(new GuiImagePopup(window, "USERS MANUAL", qrPath,
+					"SCAN FOR YOUR ARCADES USERS MANUAL"));
+			else
+				window->pushGui(new GuiMsgBox(window,
+					"SCAN FOR YOUR ARCADES USERS MANUAL\n\n"
+					"(QR CODE IMAGE NOT FOUND)", "CLOSE", nullptr));
+		});
+		s->addRow(row);
+	}
+
+	mWindow->pushGui(s);
+}
+
+// ============================================================================
+//  USER RESOURCES > HOW-TO VIDEOS
+// ============================================================================
+
+void GuiMenu::openHowToVideos()
+{
+	Window* window = mWindow;
+	std::string videoDir = Utils::FileSystem::getHomePath() +
+		"/simplearcades/docs/videos";
+
+	// Scan for video files
+	std::vector<std::string> videos;
+	if (Utils::FileSystem::isDirectory(videoDir))
+	{
+		DIR* d = opendir(videoDir.c_str());
+		if (d)
+		{
+			struct dirent* ent = nullptr;
+			while ((ent = readdir(d)) != nullptr)
+			{
+				std::string name = ent->d_name;
+				if (name == "." || name == "..")
+					continue;
+
+				std::string fullPath = videoDir + "/" + name;
+
+				struct stat st;
+				if (stat(fullPath.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+					continue;
+
+				std::string ext = Utils::FileSystem::getExtension(fullPath);
+				std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+				if (ext == ".mp4" || ext == ".mkv" || ext == ".avi")
+					videos.push_back(fullPath);
+			}
+			closedir(d);
+		}
+		std::sort(videos.begin(), videos.end());
+	}
+
+	if (videos.empty())
+	{
+		window->pushGui(new GuiMsgBox(window,
+			"NO VIDEOS AVAILABLE YET.\n\n"
+			"HOW-TO VIDEOS WILL APPEAR HERE\n"
+			"WHEN THEY BECOME AVAILABLE.",
+			"OK", nullptr));
+		return;
+	}
+
+	auto s = new GuiSettings(window, "HOW-TO VIDEOS");
+
+	for (const auto& videoPath : videos)
+	{
+		// Clean up filename for display: strip path and extension,
+		// replace underscores with spaces, uppercase
+		std::string name = Utils::FileSystem::getStem(videoPath);
+		std::replace(name.begin(), name.end(), '_', ' ');
+		name = Utils::String::toUpper(name);
+
+		ComponentListRow row;
+		row.addElement(std::make_shared<TextComponent>(window,
+			name, saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.makeAcceptInputHandler([window, videoPath] {
+			// Deinit ES, play video, reinit
+			LOG(LogInfo) << "GuiMenu: Playing how-to video: " << videoPath;
+
+			AudioManager::getInstance()->deinit();
+			VolumeControl::getInstance()->deinit();
+			InputManager::getInstance()->deinit();
+			window->deinit();
+
+			::system("clear >/dev/tty1 2>/dev/null");
+
+			SimpleArcadesMusicManager::getInstance().onGameLaunched();
+
+			// Try omxplayer first (Pi native), fall back to vlc
+			std::string cmd = "omxplayer -b \"" + videoPath + "\" </dev/null >/dev/null 2>&1";
+			if (::system("command -v omxplayer >/dev/null 2>&1") != 0)
+				cmd = "cvlc --fullscreen --play-and-exit \"" + videoPath + "\" >/dev/null 2>&1";
+
+			runSystemCommand(cmd);
+
+			SimpleArcadesMusicManager::getInstance().onGameReturned();
+
+			window->init();
+			InputManager::getInstance()->init();
+			VolumeControl::getInstance()->init();
+			window->normalizeNextUpdate();
+		});
+		s->addRow(row);
+	}
+
+	window->pushGui(s);
+}
+
+// ============================================================================
+//  FACTORY TOOLS — top-level submenu (Full only)
+// ============================================================================
+
+void GuiMenu::openFactoryTools()
+{
+	auto s = new GuiSettings(mWindow, "FACTORY TOOLS");
+	Window* window = mWindow;
+
+	// FACTORY SETUP (arcade build/config tool)
+	{
+		ComponentListRow row;
+		row.addElement(std::make_shared<TextComponent>(mWindow,
+			"FACTORY SETUP", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.addElement(makeArrow(mWindow), false);
+		row.makeAcceptInputHandler([window] {
+			launchExternalScript(window,
+				Utils::FileSystem::getHomePath() +
+				"/simplearcades/scripts/utilities/factory_setup.sh", true);
+		});
+		s->addRow(row);
+	}
+
+	// OTHER SETTINGS
+	ComponentListRow otherRow;
+	otherRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"OTHER SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	otherRow.addElement(makeArrow(mWindow), false);
+	otherRow.makeAcceptInputHandler([this] { openOtherSettings(); });
+	s->addRow(otherRow);
+
+	// SCRAPER
+	ComponentListRow scraperRow;
+	scraperRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"SCRAPER", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	scraperRow.addElement(makeArrow(mWindow), false);
+	scraperRow.makeAcceptInputHandler([this] { openScraperSettings(); });
+	s->addRow(scraperRow);
+
+	// SOUND SETTINGS
+	ComponentListRow soundRow;
+	soundRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"SOUND SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	soundRow.addElement(makeArrow(mWindow), false);
+	soundRow.makeAcceptInputHandler([this] { openSoundSettings(); });
+	s->addRow(soundRow);
+
+	// UI
+	ComponentListRow uiRow;
+	uiRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"UI", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	uiRow.addElement(makeArrow(mWindow), false);
+	uiRow.makeAcceptInputHandler([this] { openFactoryUI(); });
+	s->addRow(uiRow);
+
+	mWindow->pushGui(s);
+}
+
+// ============================================================================
+//  FACTORY TOOLS > UI — all the old UI Settings minus Screensaver
+// ============================================================================
+
+void GuiMenu::openFactoryUI()
+{
+	auto s = new GuiSettings(mWindow, "UI");
+	Window* window = mWindow;
+
+	// carousel transition option
+	auto move_carousel = std::make_shared<SwitchComponent>(mWindow);
+	move_carousel->setState(Settings::getInstance()->getBool("MoveCarousel"));
+	s->addWithLabel("CAROUSEL TRANSITIONS", move_carousel);
+	s->addSaveFunc([move_carousel] {
+		if (move_carousel->getState()
+			&& !Settings::getInstance()->getBool("MoveCarousel")
+			&& PowerSaver::getMode() == PowerSaver::INSTANT)
+		{
+			Settings::getInstance()->setString("PowerSaverMode", "default");
+			PowerSaver::init();
+		}
+		Settings::getInstance()->setBool("MoveCarousel", move_carousel->getState());
+	});
+
+	// hide start menu in Kid Mode
+	auto disable_start = std::make_shared<SwitchComponent>(mWindow);
+	disable_start->setState(Settings::getInstance()->getBool("DisableKidStartMenu"));
+	s->addWithLabel("DISABLE START MENU IN KID MODE", disable_start);
+	s->addSaveFunc([disable_start] { Settings::getInstance()->setBool("DisableKidStartMenu", disable_start->getState()); });
+
+	// enable filters (ForceDisableFilters)
+	auto enable_filter = std::make_shared<SwitchComponent>(mWindow);
+	enable_filter->setState(!Settings::getInstance()->getBool("ForceDisableFilters"));
+	s->addWithLabel("ENABLE FILTERS", enable_filter);
+	s->addSaveFunc([enable_filter] {
+		bool filter_is_enabled = !Settings::getInstance()->getBool("ForceDisableFilters");
+		Settings::getInstance()->setBool("ForceDisableFilters", !enable_filter->getState());
+		if (enable_filter->getState() != filter_is_enabled) ViewController::get()->ReloadAndGoToStart();
+	});
+
+	// lb/rb uses full screen size paging instead of -10/+10 steps
+	auto use_fullscreen_paging = std::make_shared<SwitchComponent>(mWindow);
+	use_fullscreen_paging->setState(Settings::getInstance()->getBool("UseFullscreenPaging"));
+	s->addWithLabel("FULL SCREEN PAGING (LB/RB)", use_fullscreen_paging);
+	s->addSaveFunc([use_fullscreen_paging] {
+		Settings::getInstance()->setBool("UseFullscreenPaging", use_fullscreen_paging->getState());
+	});
+
+	// GameList view style
+	auto gamelist_style = std::make_shared< OptionListComponent<std::string> >(mWindow, "GAMELIST VIEW STYLE", false);
+	std::vector<std::string> styles;
+	styles.push_back("automatic");
+	styles.push_back("basic");
+	styles.push_back("detailed");
+	styles.push_back("video");
+	styles.push_back("grid");
+	for (auto it = styles.cbegin(); it != styles.cend(); it++)
+		gamelist_style->add(*it, *it, Settings::getInstance()->getString("GamelistViewStyle") == *it);
+	s->addWithLabel("GAMELIST VIEW STYLE", gamelist_style);
+	s->addSaveFunc([gamelist_style] {
+		bool needReload = false;
+		if (Settings::getInstance()->getString("GamelistViewStyle") != gamelist_style->getSelected())
+			needReload = true;
+		Settings::getInstance()->setString("GamelistViewStyle", gamelist_style->getSelected());
+		if (needReload)
+			ViewController::get()->reloadAll();
+	});
+
+	// Optionally ignore leading articles when sorting game titles
+	auto ignore_articles = std::make_shared<SwitchComponent>(mWindow);
+	ignore_articles->setState(Settings::getInstance()->getBool("IgnoreLeadingArticles"));
+	s->addWithLabel("IGNORE ARTICLES (NAME SORT ONLY)", ignore_articles);
+	s->addSaveFunc([ignore_articles, window] {
+		bool articles_are_ignored = Settings::getInstance()->getBool("IgnoreLeadingArticles");
+		Settings::getInstance()->setBool("IgnoreLeadingArticles", ignore_articles->getState());
+		if (ignore_articles->getState() != articles_are_ignored)
+		{
+			for (auto it = SystemData::sSystemVector.cbegin(); it != SystemData::sSystemVector.cend(); it++)
+			{
+				FileData* root = (*it)->getRootFolder();
+				root->sort(getSortTypeFromString(root->getSortName()));
+				ViewController::get()->getGameListView((*it))->onFileChanged(root, FILE_SORTED);
+			}
+			GuiInfoPopup* popup = new GuiInfoPopup(window, "Files sorted", 4000);
+			window->setInfoPopup(popup);
+		}
+	});
+
+	// show help
+	auto show_help = std::make_shared<SwitchComponent>(mWindow);
+	show_help->setState(Settings::getInstance()->getBool("ShowHelpPrompts"));
+	s->addWithLabel("ON-SCREEN HELP", show_help);
+	s->addSaveFunc([show_help] { Settings::getInstance()->setBool("ShowHelpPrompts", show_help->getState()); });
+
+	// quick system select (left/right in game list view)
+	auto quick_sys_select = std::make_shared<SwitchComponent>(mWindow);
+	quick_sys_select->setState(Settings::getInstance()->getBool("QuickSystemSelect"));
+	s->addWithLabel("QUICK SYSTEM SELECT", quick_sys_select);
+	s->addSaveFunc([quick_sys_select] { Settings::getInstance()->setBool("QuickSystemSelect", quick_sys_select->getState()); });
+
+	// Optionally start in selected system
+	auto systemfocus_list = std::make_shared< OptionListComponent<std::string> >(mWindow, "START ON SYSTEM", false);
+	systemfocus_list->add("NONE", "", Settings::getInstance()->getString("StartupSystem") == "");
+	for (auto it = SystemData::sSystemVector.cbegin(); it != SystemData::sSystemVector.cend(); it++)
+	{
+		if ("retropie" != (*it)->getName())
+			systemfocus_list->add((*it)->getName(), (*it)->getName(), Settings::getInstance()->getString("StartupSystem") == (*it)->getName());
+	}
+	s->addWithLabel("START ON SYSTEM", systemfocus_list);
+	s->addSaveFunc([systemfocus_list] {
+		Settings::getInstance()->setString("StartupSystem", systemfocus_list->getSelected());
+	});
+
+	// theme set
+	auto themeSets = ThemeData::getThemeSets();
+	if(!themeSets.empty())
+	{
+		std::map<std::string, ThemeSet>::const_iterator selectedSet = themeSets.find(Settings::getInstance()->getString("ThemeSet"));
+		if(selectedSet == themeSets.cend())
+			selectedSet = themeSets.cbegin();
+
+		auto theme_set = std::make_shared< OptionListComponent<std::string> >(mWindow, "THEME SET", false);
+		for(auto it = themeSets.cbegin(); it != themeSets.cend(); it++)
+			theme_set->add(it->first, it->first, it == selectedSet);
+		s->addWithLabel("THEME SET", theme_set);
+
+		s->addSaveFunc([window, theme_set]
+		{
+			bool needReload = false;
+			std::string oldTheme = Settings::getInstance()->getString("ThemeSet");
+			if(oldTheme != theme_set->getSelected())
+				needReload = true;
+
+			Settings::getInstance()->setString("ThemeSet", theme_set->getSelected());
+
+			if(needReload)
+			{
+				Scripting::fireEvent("theme-changed", theme_set->getSelected(), oldTheme);
+				CollectionSystemManager::get()->updateSystemsList();
+				ViewController::get()->reloadAll(true);
+			}
+		});
+	}
+
+	// transition style
+	auto transition_style = std::make_shared< OptionListComponent<std::string> >(mWindow, "TRANSITION STYLE", false);
+	std::vector<std::string> transitions;
+	transitions.push_back("fade");
+	transitions.push_back("slide");
+	transitions.push_back("instant");
+	for(auto it = transitions.cbegin(); it != transitions.cend(); it++)
+		transition_style->add(*it, *it, Settings::getInstance()->getString("TransitionStyle") == *it);
+	s->addWithLabel("TRANSITION STYLE", transition_style);
+	s->addSaveFunc([transition_style] {
+		if (Settings::getInstance()->getString("TransitionStyle") == "instant"
+			&& transition_style->getSelected() != "instant"
+			&& PowerSaver::getMode() == PowerSaver::INSTANT)
+		{
+			Settings::getInstance()->setString("PowerSaverMode", "default");
+			PowerSaver::init();
+		}
+		Settings::getInstance()->setString("TransitionStyle", transition_style->getSelected());
+	});
+
+	// UI MODE (Full/Kiosk/Kid)
+	auto UImodeSelection = std::make_shared< OptionListComponent<std::string> >(mWindow, "UI MODE", false);
+	std::vector<std::string> UImodes = UIModeController::getInstance()->getUIModes();
+	for (auto it = UImodes.cbegin(); it != UImodes.cend(); it++)
+		UImodeSelection->add(*it, *it, Settings::getInstance()->getString("UIMode") == *it);
+	s->addWithLabel("UI MODE", UImodeSelection);
+	s->addSaveFunc([UImodeSelection, window]
+	{
+		std::string selectedMode = UImodeSelection->getSelected();
+		if (selectedMode != "Full")
+		{
+			std::string msg = "You are changing the UI to a restricted mode:\n" + selectedMode + "\n";
+			msg += "This will hide most menu-options to prevent changes to the system.\n";
+			msg += "To unlock and return to the full UI, enter this code: \n";
+			msg += "\"" + UIModeController::getInstance()->getFormattedPassKeyStr() + "\"\n\n";
+			msg += "Do you want to proceed?";
+			window->pushGui(new GuiMsgBox(window, msg,
+				"YES", [selectedMode] {
+					LOG(LogDebug) << "Setting UI mode to " << selectedMode;
+					Settings::getInstance()->setString("UIMode", selectedMode);
+					Settings::getInstance()->saveFile();
+			}, "NO", nullptr));
+		}
+	});
+
+	mWindow->pushGui(s);
+}
+
+// ============================================================================
+//  Existing functions below — kept as-is
+// ============================================================================
 
 void GuiMenu::openScraperSettings()
 {
@@ -1353,6 +2120,130 @@ void GuiMenu::openQuitMenu()
 	row.addElement(std::make_shared<TextComponent>(window, "SHUTDOWN SYSTEM", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 	s->addRow(row);
 	mWindow->pushGui(s);
+}
+
+void GuiMenu::openShowHideSystems()
+{
+	mWindow->pushGui(new GuiShowHideSystems(mWindow));
+}
+
+void GuiMenu::openControllerSettings()
+{
+	mWindow->pushGui(new GuiControllerSettings(mWindow));
+}
+
+void GuiMenu::openWifiSettings()
+{
+	mWindow->pushGui(new GuiWifiSettings(mWindow));
+}
+
+void GuiMenu::openBluetoothSettings()
+{
+	mWindow->pushGui(new GuiBluetoothSettings(mWindow));
+}
+
+// ============================================================================
+//  SETTINGS > TIME ZONE
+// ============================================================================
+
+void GuiMenu::openTimezoneSettings()
+{
+	auto s = new GuiSettings(mWindow, "TIME ZONE");
+	Window* window = mWindow;
+
+	// Detect current timezone
+	std::string currentTz = "Unknown";
+	{
+		FILE* pipe = popen("cat /etc/timezone 2>/dev/null", "r");
+		if (pipe)
+		{
+			char buf[256];
+			if (fgets(buf, sizeof(buf), pipe))
+			{
+				currentTz = buf;
+				// Trim whitespace/newline
+				while (!currentTz.empty() &&
+				       (currentTz.back() == '\n' || currentTz.back() == '\r' || currentTz.back() == ' '))
+					currentTz.pop_back();
+			}
+			pclose(pipe);
+		}
+	}
+
+	// Map display names to tz database names
+	struct TzOption { std::string label; std::string tzName; };
+	std::vector<TzOption> zones = {
+		{ "EASTERN",  "America/New_York" },
+		{ "CENTRAL",  "America/Chicago" },
+		{ "MOUNTAIN", "America/Denver" },
+		{ "PACIFIC",  "America/Los_Angeles" },
+		{ "ALASKA",   "America/Anchorage" },
+		{ "HAWAII",   "Pacific/Honolulu" },
+	};
+
+	auto tzList = std::make_shared<OptionListComponent<std::string>>(window,
+		"TIME ZONE", false);
+
+	bool anySelected = false;
+	for (const auto& tz : zones)
+	{
+		bool selected = (currentTz == tz.tzName);
+		if (selected) anySelected = true;
+		tzList->add(tz.label, tz.tzName, selected);
+	}
+
+	// If none matched, default to Eastern
+	if (!anySelected)
+	{
+		// Re-build with Eastern selected
+		tzList = std::make_shared<OptionListComponent<std::string>>(window,
+			"TIME ZONE", false);
+		for (const auto& tz : zones)
+			tzList->add(tz.label, tz.tzName, tz.tzName == "America/New_York");
+	}
+
+	s->addWithLabel("TIME ZONE", tzList);
+
+	// Show current setting as info
+	std::string currentLabel = currentTz;
+	for (const auto& tz : zones)
+	{
+		if (tz.tzName == currentTz)
+		{
+			currentLabel = tz.label;
+			break;
+		}
+	}
+
+	s->addWithLabel("CURRENT", std::make_shared<TextComponent>(window,
+		currentLabel, saFont(FONT_SIZE_SMALL), SA_SUBTITLE_COLOR));
+
+	s->addSaveFunc([window, tzList] {
+		std::string selected = tzList->getSelected();
+		if (selected.empty()) return;
+
+		// Apply timezone via timedatectl
+		std::string cmd = "sudo timedatectl set-timezone \"" + selected + "\" 2>/dev/null";
+		if (::system(cmd.c_str()) == 0)
+		{
+			window->pushGui(new GuiMsgBox(window,
+				"TIME ZONE UPDATED.\n\nYOU MAY NEED TO RESTART\nFOR THE CHANGE TO TAKE FULL EFFECT.",
+				"OK", nullptr));
+		}
+		else
+		{
+			window->pushGui(new GuiMsgBox(window,
+				"FAILED TO SET TIME ZONE.\n\nPLEASE TRY AGAIN.",
+				"OK", nullptr));
+		}
+	});
+
+	mWindow->pushGui(s);
+}
+
+void GuiMenu::openNetplaySettings()
+{
+	mWindow->pushGui(new GuiNetplaySettings(mWindow));
 }
 
 void GuiMenu::addVersionInfo()

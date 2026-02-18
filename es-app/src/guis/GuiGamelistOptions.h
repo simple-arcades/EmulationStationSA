@@ -29,6 +29,18 @@ private:
 	void exitEditMode();
 	void jumpToLetter();
 
+	// --- Save state deletion (savestates system only) ---
+	void deleteSaveState();
+
+	// --- Saved games context menu (non-savestates systems) ---
+	void openSavedGames();
+
+	// --- Netplay (play online from game options) ---
+	void openPlayOnline();
+	std::string mSavedGamesRomPath;
+	std::string mSavedGamesRomName;
+	int mSavedGamesCount;
+
 	MenuComponent mMenu;
 
 	typedef OptionListComponent<char> LetterList;

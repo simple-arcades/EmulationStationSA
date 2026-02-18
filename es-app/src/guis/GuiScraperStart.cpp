@@ -18,7 +18,11 @@ GuiScraperStart::GuiScraperStart(Window* window) : GuiComponent(window),
 	mFilters->add("All Games",
 		[](SystemData*, FileData*) -> bool { return true; }, false);
 	mFilters->add("Only missing image",
-		[](SystemData*, FileData* g) -> bool { return g->metadata.get("image").empty(); }, true);
+		[](SystemData*, FileData* g) -> bool { return g->metadata.get("image").empty(); }, false);
+	mFilters->add("Only missing image or video",
+		[](SystemData*, FileData* g) -> bool {
+			return g->metadata.get("image").empty() || g->metadata.get("video").empty();
+		}, true);
 	mMenu.addWithLabel("Filter", mFilters);
 
 	//add systems (all with a platformid specified selected)

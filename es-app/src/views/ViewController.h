@@ -29,6 +29,7 @@ public:
 	void reloadGameListView(IGameListView* gamelist, bool reloadTheme = false);
 	inline void reloadGameListView(SystemData* system, bool reloadTheme = false) { reloadGameListView(getGameListView(system).get(), reloadTheme); }
 	void reloadAll(bool themeChanged = false); // Reload everything with a theme.  When the "ThemeSet" setting changes, themeChanged is true.
+	void reloadSystemListView(); // Rebuild the system carousel to reflect newly visible/hidden systems.
 
 	// Navigation.
 	void goToNextGameList();

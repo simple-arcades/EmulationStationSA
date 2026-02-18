@@ -39,6 +39,7 @@ set(CORE_HEADERS
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/ImageGridComponent.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/MenuComponent.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/NinePatchComponent.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/components/OnScreenKeyboard.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/OptionListComponent.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/ScrollableContainer.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/SliderComponent.h
@@ -54,6 +55,7 @@ set(CORE_HEADERS
 	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiInputConfig.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiMsgBox.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiTextEditPopup.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiTextInput.h
 
 	# Math
 	${CMAKE_CURRENT_SOURCE_DIR}/src/math/Misc.h
@@ -116,6 +118,7 @@ set(CORE_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/ImageComponent.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/MenuComponent.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/NinePatchComponent.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/components/OnScreenKeyboard.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/ScrollableContainer.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/SliderComponent.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/SwitchComponent.cpp
@@ -130,6 +133,7 @@ set(CORE_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiInputConfig.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiMsgBox.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiTextEditPopup.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiTextInput.cpp
 
 	# Math
 	${CMAKE_CURRENT_SOURCE_DIR}/src/math/Misc.cpp

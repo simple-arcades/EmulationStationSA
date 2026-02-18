@@ -38,8 +38,22 @@ set(ES_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiCollectionSystemsOptions.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiRandomCollectionOptions.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiInfoPopup.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiImagePopup.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiImageViewer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiMusicPopup.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSavedGames.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSaveStatePreview.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiShowHideSystems.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiControllerSettings.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiPerSystemOverrides.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiWifiSettings.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiBluetoothSettings.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiNetplaySettings.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiNetplayLobby.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiNetplayLan.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/NetplayConfig.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/NetplayCore.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/NetplayLauncher.h
 
     # Scrapers
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scrapers/Scraper.h
@@ -76,6 +90,7 @@ set(ES_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FileFilterIndex.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemScreenSaver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CollectionSystemManager.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/SaveStateDeleteHelper.cpp
 
     # GuiComponents
     ${CMAKE_CURRENT_SOURCE_DIR}/src/components/AsyncReqComponent.cpp
@@ -101,8 +116,22 @@ set(ES_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiCollectionSystemsOptions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiRandomCollectionOptions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiInfoPopup.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiImagePopup.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiImageViewer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiMusicPopup.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSavedGames.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSaveStatePreview.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiShowHideSystems.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiControllerSettings.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiPerSystemOverrides.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiWifiSettings.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiBluetoothSettings.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiNetplaySettings.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiNetplayLobby.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiNetplayLan.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/NetplayConfig.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/NetplayCore.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/src/NetplayLauncher.cpp
 
     # Scrapers
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scrapers/Scraper.cpp

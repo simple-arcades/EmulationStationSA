@@ -13,9 +13,24 @@
 #include "SystemData.h"
 #include "components/TextListComponent.h"
 
+// --- Save state deletion support ---
+#include "guis/GuiMsgBox.h"
+#include "SaveStateDeleteHelper.h"
+#include "utils/FileSystemUtil.h"
+
+// --- Saved games context menu ---
+#include "guis/GuiSavedGames.h"
+
+// --- Netplay ---
+#include "NetplayCore.h"
+#include "NetplayLauncher.h"
+#include "NetplayConfig.h"
+#include "guis/GuiNetplayLobby.h"
+#include "guis/GuiTextInput.h"
+
 GuiGamelistOptions::GuiGamelistOptions(Window* window, SystemData* system) : GuiComponent(window),
 	mSystem(system), mMenu(window, "OPTIONS"), mFromPlaceholder(false), mFiltersChanged(false),
-	mJumpToSelected(false), mMetadataChanged(false)
+	mJumpToSelected(false), mMetadataChanged(false), mSavedGamesCount(0)
 {
 	addChild(&mMenu);
 
@@ -153,6 +168,72 @@ GuiGamelistOptions::GuiGamelistOptions(Window* window, SystemData* system) : Gui
 		mMenu.addRow(row);
 	}
 
+	// ====================================================================
+	//  "DELETE THIS SAVE" — only shown in the savestates system
+	//
+	//  Appears after all other menu items, before the menu is centered.
+	//  Only for non-placeholder, non-folder items in the "savestates" system.
+	// ====================================================================
+	if (!mFromPlaceholder && mSystem->getName() == "savestates" && file->getType() != FOLDER
+		&& Utils::FileSystem::getFileName(file->getPath()) != ".donotdelete.entry")
+	{
+		row.elements.clear();
+		row.addElement(std::make_shared<TextComponent>(mWindow, "DELETE THIS SAVE", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		row.makeAcceptInputHandler(std::bind(&GuiGamelistOptions::deleteSaveState, this));
+		mMenu.addRow(row);
+	}
+
+	// ====================================================================
+	//  "PLAY ONLINE" — shown when the current game supports netplay.
+	//
+	//  Requires: game is multiplayer (players >= 2), system's default
+	//  core is in the netplay whitelist.
+	//  Visible in kiosk mode (no isUIModeFull() gating).
+	// ====================================================================
+	if (!mFromPlaceholder && mSystem->getName() != "savestates"
+		&& mSystem->getName() != "retropie" && file->getType() == GAME)
+	{
+		if (NetplayCore::isGameNetplayCompatible(file))
+		{
+			row.elements.clear();
+			row.addElement(std::make_shared<TextComponent>(mWindow, "PLAY ONLINE",
+				saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+			row.addElement(makeArrow(mWindow), false);
+			row.makeAcceptInputHandler(std::bind(&GuiGamelistOptions::openPlayOnline, this));
+			mMenu.addRow(row);
+		}
+	}
+
+	// ====================================================================
+	//  "SAVED GAMES (N)" — shown on non-savestates systems when
+	//  save states exist for the currently selected ROM.
+	//
+	//  Visible in kiosk mode (no isUIModeFull() gating).
+	//  Opens GuiSavedGames dialog listing all saves for this ROM.
+	// ====================================================================
+	// ====================================================================
+	if (!mFromPlaceholder && mSystem->getName() != "savestates"
+		&& mSystem->getName() != "retropie" && file->getType() == GAME)
+	{
+		std::string currentRomPath = file->getPath();
+		std::vector<SaveStateDeleteHelper::SaveEntryInfo> saves =
+			SaveStateDeleteHelper::findSavesForRom(currentRomPath);
+
+		if (!saves.empty())
+		{
+			mSavedGamesRomPath = currentRomPath;
+			mSavedGamesRomName = file->getName();
+			mSavedGamesCount = (int)saves.size();
+
+			row.elements.clear();
+			std::string label = "SAVED GAMES (" + std::to_string(mSavedGamesCount) + ")";
+			row.addElement(std::make_shared<TextComponent>(mWindow, label, saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+			row.addElement(makeArrow(mWindow), false);
+			row.makeAcceptInputHandler(std::bind(&GuiGamelistOptions::openSavedGames, this));
+			mMenu.addRow(row);
+		}
+	}
+
 	// center the menu
 	setSize((float)Renderer::getScreenWidth(), (float)Renderer::getScreenHeight());
 	mMenu.setPosition((mSize.x() - mMenu.getSize().x()) / 2, (mSize.y() - mMenu.getSize().y()) / 2);
@@ -273,6 +354,389 @@ void GuiGamelistOptions::openMetaDataEd()
 	}
 
 	mWindow->pushGui(new GuiMetaDataEd(mWindow, &file->metadata, file->metadata.getMDD(), p, Utils::FileSystem::getFileName(file->getPath()), saveBtnFunc, deleteBtnFunc));
+}
+
+// ============================================================================
+//  deleteSaveState
+//
+//  Main entry point for the "DELETE THIS SAVE" feature.
+//  This is called when the user selects the menu option.
+//
+//  Flow:
+//    1. Show confirmation dialog with "This cannot be undone."
+//    2. On YES -> Phase 1: delete watcher files, video (if last ref), gamelist entry
+//    3. Check if this was the last save for the ROM
+//    4. If last save -> Phase 2: scan for save-RAM files, ask user
+//    5. Show "DELETED!" confirmation
+//    6. Reload the gamelist view
+// ============================================================================
+void GuiGamelistOptions::deleteSaveState()
+{
+	// Get the currently selected save entry
+	FileData* file = getGamelist()->getCursor();
+	if (!file)
+		return;
+
+	// Guard: never delete the system placeholder
+	std::string filename = Utils::FileSystem::getFileName(file->getPath());
+	if (filename == ".donotdelete.entry")
+	{
+		mWindow->pushGui(new GuiMsgBox(mWindow, "THIS ENTRY CANNOT BE DELETED.", "OK", nullptr));
+		return;
+	}
+
+	// The entry path is what ES sees as the "ROM" for this save
+	std::string entryPath = file->getPath();
+	std::string gameName = file->getName();
+
+	// Build the confirmation message
+	std::string confirmMsg = "DELETE SAVE STATE?\n\n\"" + gameName + "\"\n\nTHIS CANNOT BE UNDONE.";
+
+	// Capture everything we need by value — this GuiGamelistOptions will be
+	// deleted before the callback runs, so we can't use 'this' safely.
+	// Instead, capture the window pointer and system pointer.
+	Window* window = mWindow;
+	SystemData* system = mSystem;
+
+	auto doDelete = [window, system, entryPath, gameName]()
+	{
+		// ------------------------------------------------------------------
+		//  Derive paths from the entry file location
+		// ------------------------------------------------------------------
+		std::string savestatesDirStr = Utils::FileSystem::getParent(entryPath);
+
+		std::string gamelistPath = savestatesDirStr + "/gamelist.xml";
+		std::string savefilesDir = savestatesDirStr + "/savefiles";
+
+		// The entry's relative path as stored in gamelist.xml (usually "./filename.entry")
+		// ES stores paths relative to the system ROM dir, prefixed with "./"
+		std::string entryFilename = Utils::FileSystem::getFileName(entryPath);
+		std::string gamelistRelPath = "./" + entryFilename;
+
+		// ------------------------------------------------------------------
+		//  Read the .metadata file to get the ROM path
+		//  (needed for save-RAM detection and "last save" check)
+		// ------------------------------------------------------------------
+		std::string entrySuffix = ".entry";
+		std::string basePath = entryPath;
+		if (basePath.length() > entrySuffix.length() &&
+		    basePath.compare(basePath.length() - entrySuffix.length(), entrySuffix.length(), entrySuffix) == 0)
+		{
+			basePath = basePath.substr(0, basePath.length() - entrySuffix.length());
+		}
+		std::string metadataPath = basePath + ".metadata";
+
+		SaveStateDeleteHelper::MetadataInfo metaInfo;
+		bool hasMetadata = SaveStateDeleteHelper::parseMetadataFile(metadataPath, metaInfo);
+
+		// ------------------------------------------------------------------
+		//  Check if this is the last save for this ROM BEFORE we delete
+		//  (need to check while our .metadata file still exists)
+		// ------------------------------------------------------------------
+		bool lastSave = false;
+		if (hasMetadata)
+		{
+			lastSave = SaveStateDeleteHelper::isLastSaveForRom(
+				savestatesDirStr, metaInfo.romPath, metadataPath);
+		}
+
+		// ------------------------------------------------------------------
+		//  Get the video path from gamelist BEFORE we remove the entry
+		//  (so we can check references and potentially delete it)
+		// ------------------------------------------------------------------
+		std::string videoPath;
+		{
+			pugi::xml_document doc;
+			if (doc.load_file(gamelistPath.c_str()))
+			{
+				for (pugi::xml_node game = doc.child("gameList").child("game"); game; game = game.next_sibling("game"))
+				{
+					if (std::string(game.child("path").text().as_string()) == gamelistRelPath)
+					{
+						videoPath = game.child("video").text().as_string();
+						break;
+					}
+				}
+			}
+		}
+
+		// ------------------------------------------------------------------
+		//  PHASE 1: Delete watcher-created files
+		// ------------------------------------------------------------------
+		SaveStateDeleteHelper::deleteWatcherFiles(entryPath);
+
+		// ------------------------------------------------------------------
+		//  Handle video deletion — only delete if no other entries reference it
+		// ------------------------------------------------------------------
+		if (!videoPath.empty())
+		{
+			int otherRefs = SaveStateDeleteHelper::countVideoReferences(
+				gamelistPath, videoPath, gamelistRelPath);
+
+			if (otherRefs == 0)
+			{
+				// This was the last reference — safe to delete the video
+				// The video path in gamelist.xml is relative (e.g. "./media/videos/game.mp4")
+				// Resolve it against the savestates directory
+				std::string fullVideoPath;
+				if (videoPath.length() > 2 && videoPath.substr(0, 2) == "./")
+					fullVideoPath = savestatesDirStr + "/" + videoPath.substr(2);
+				else
+					fullVideoPath = savestatesDirStr + "/" + videoPath;
+
+				if (Utils::FileSystem::exists(fullVideoPath))
+				{
+					if (Utils::FileSystem::removeFile(fullVideoPath))
+						LOG(LogInfo) << "SaveStateDeleteHelper: Deleted video (last reference): " << fullVideoPath;
+					else
+						LOG(LogError) << "SaveStateDeleteHelper: Failed to delete video: " << fullVideoPath;
+				}
+			}
+			else
+			{
+				LOG(LogInfo) << "SaveStateDeleteHelper: Video still referenced by " << otherRefs << " other save(s), keeping: " << videoPath;
+			}
+		}
+
+		// ------------------------------------------------------------------
+		//  Remove the gamelist.xml entry
+		// ------------------------------------------------------------------
+		SaveStateDeleteHelper::removeGamelistEntry(gamelistPath, gamelistRelPath);
+
+		// ------------------------------------------------------------------
+		//  Remove from ES's in-memory data and reload the view
+		// ------------------------------------------------------------------
+		// Use the same pattern as the metadata editor's delete:
+		// remove() handles both the internal FileData tree and the view refresh
+		ViewController::get()->getGameListView(system).get()->remove(
+			ViewController::get()->getGameListView(system)->getCursor(), true, true);
+
+		// ------------------------------------------------------------------
+		//  If we just deleted the last real save, unhide the placeholder
+		//  so the user sees "NO SAVED GAMES YET" instead of an empty system
+		// ------------------------------------------------------------------
+		{
+			pugi::xml_document doc;
+			if (doc.load_file(gamelistPath.c_str()))
+			{
+				pugi::xml_node root = doc.child("gameList");
+				bool hasRealEntries = false;
+				pugi::xml_node placeholderNode;
+
+				for (pugi::xml_node game = root.child("game"); game; game = game.next_sibling("game"))
+				{
+					std::string path = game.child("path").text().as_string();
+					if (path == "./.donotdelete.entry")
+						placeholderNode = game;
+					else
+						hasRealEntries = true;
+				}
+
+				if (!hasRealEntries && placeholderNode)
+				{
+					// No real saves left — unhide the placeholder
+					pugi::xml_node hiddenNode = placeholderNode.child("hidden");
+					if (hiddenNode)
+						hiddenNode.text().set("false");
+					else
+						placeholderNode.append_child("hidden").text().set("false");
+
+					doc.save_file(gamelistPath.c_str());
+					LOG(LogInfo) << "SaveStateDeleteHelper: Last real save deleted, unhid placeholder";
+
+					// Also update in-memory FileData so ES sees it immediately
+					FileData* rootFolder = system->getRootFolder();
+					if (rootFolder)
+					{
+						std::vector<FileData*> files = rootFolder->getFilesRecursive(GAME);
+						for (auto* f : files)
+						{
+							if (Utils::FileSystem::getFileName(f->getPath()) == ".donotdelete.entry")
+							{
+								f->metadata.set("hidden", "false");
+								break;
+							}
+						}
+					}
+
+					// Rebuild the gamelist view so the placeholder appears
+					ViewController::get()->reloadGameListView(system, false);
+				}
+			}
+		}
+
+		// ------------------------------------------------------------------
+		//  PHASE 2: If this was the last save for the ROM, check for save-RAM
+		// ------------------------------------------------------------------
+		if (lastSave && hasMetadata)
+		{
+			std::string romFilename = SaveStateDeleteHelper::getFilename(metaInfo.romPath);
+			std::vector<std::string> saveRamFiles = SaveStateDeleteHelper::findSaveRamFiles(savefilesDir, romFilename);
+
+			if (!saveRamFiles.empty())
+			{
+				// Build a list of filenames for the dialog
+				std::string fileListStr;
+				for (const auto& f : saveRamFiles)
+				{
+					fileListStr += "  " + SaveStateDeleteHelper::getFilename(f) + "\n";
+				}
+
+				std::string phase2Msg =
+					"SAVE-RAM FILES FOUND\n\n"
+					"THIS WAS YOUR LAST SAVE STATE FOR THIS GAME.\n"
+					"THE FOLLOWING IN-GAME SAVE FILES WERE FOUND:\n\n" +
+					fileListStr +
+					"\nDELETE THESE FILES TOO?\n\n"
+					"THESE ARE IN-GAME PROGRESS FILES\n"
+					"(MEMORY CARDS, BATTERY SAVES, ETC.)";
+
+				// Capture saveRamFiles for the YES callback
+				auto deleteRamFiles = [saveRamFiles, window]()
+				{
+					for (const auto& f : saveRamFiles)
+					{
+						if (Utils::FileSystem::removeFile(f))
+							LOG(LogInfo) << "SaveStateDeleteHelper: Deleted save-RAM file: " << f;
+						else
+							LOG(LogError) << "SaveStateDeleteHelper: Failed to delete save-RAM file: " << f;
+					}
+
+					// Show "DELETED!" confirmation after save-RAM cleanup
+					window->pushGui(new GuiMsgBox(window, "DELETED!", "OK", nullptr));
+				};
+
+				// Show "DELETED!" even if user says NO to save-RAM
+				// (Phase 1 files were already deleted)
+				auto skipRamFiles = [window]()
+				{
+					window->pushGui(new GuiMsgBox(window, "DELETED!", "OK", nullptr));
+				};
+
+				window->pushGui(new GuiMsgBox(window, phase2Msg, "YES", deleteRamFiles, "NO", skipRamFiles));
+				return; // Phase 2 dialog handles showing "DELETED!"
+			}
+		}
+
+		// ------------------------------------------------------------------
+		//  No Phase 2 needed — show "DELETED!" confirmation
+		// ------------------------------------------------------------------
+		window->pushGui(new GuiMsgBox(window, "DELETED!", "OK", nullptr));
+	};
+
+	// Show the initial confirmation dialog
+	// After showing the confirmation, close this options menu
+	mWindow->pushGui(new GuiMsgBox(mWindow, confirmMsg, "YES", doDelete, "NO", nullptr));
+	delete this;
+}
+
+// ============================================================================
+//  openSavedGames
+//
+//  Opens the GuiSavedGames dialog showing all save states for the
+//  currently selected ROM.
+// ============================================================================
+// ============================================================================
+//  openPlayOnline
+//
+//  Shows HOST THIS GAME / FIND A MATCH submenu.
+// ============================================================================
+void GuiGamelistOptions::openPlayOnline()
+{
+	FileData* file = getGamelist()->getCursor();
+	Window* window = mWindow;
+	std::string gameName = file->getName();
+
+	// Close this options menu
+	delete this;
+
+	// Show HOST / JOIN choice
+	window->pushGui(new GuiMsgBox(window,
+		"PLAY ONLINE\n\n" + Utils::String::toUpper(gameName),
+		"HOST THIS GAME", [window, file]
+		{
+			NetplayConfig& cfg = NetplayConfig::get();
+
+			// Prompt for player name if still default
+			if (cfg.nickname == "Player" || cfg.nickname.empty())
+			{
+				window->pushGui(new GuiTextInput(window,
+					"ENTER YOUR PLAYER NAME:",
+					cfg.nickname.empty() ? "Player" : cfg.nickname,
+					[window, file](const std::string& result)
+					{
+						std::string cleaned = NetplayConfig::sanitizeNickname(result);
+						if (cleaned.empty()) cleaned = "Player";
+						NetplayConfig::get().nickname = cleaned;
+						NetplayConfig::get().save();
+
+						// Now show host confirmation
+						NetplayConfig& cfg2 = NetplayConfig::get();
+						NetplayGameInfo info = NetplayCore::getGameInfo(file);
+
+						std::string safetyNote;
+						if (info.safety == NetplaySafety::STRICT)
+							safetyNote = "\n\nNOTE: THIS GAME REQUIRES BOTH PLAYERS\nTO USE THE SAME TYPE OF ARCADE.";
+
+						std::string msg =
+							"START HOSTING?\n\n"
+							"GAME: " + Utils::String::toUpper(file->getName()) + "\n"
+							"PLAYER: " + Utils::String::toUpper(cfg2.nickname) + "\n"
+							"MODE: " + Utils::String::toUpper(cfg2.mode == "lan" ? "LAN" : cfg2.onlineMethod) +
+							safetyNote;
+
+						window->pushGui(new GuiMsgBox(window, msg,
+							"START", [window, file]
+							{
+								NetplayLauncher::launchAsHost(window, file);
+							},
+							"CANCEL", nullptr));
+					}));
+				return;
+			}
+
+			NetplayGameInfo info = NetplayCore::getGameInfo(file);
+
+			std::string safetyNote;
+			if (info.safety == NetplaySafety::STRICT)
+				safetyNote = "\n\nNOTE: THIS GAME REQUIRES BOTH PLAYERS\nTO USE THE SAME TYPE OF ARCADE.";
+
+			std::string msg =
+				"START HOSTING?\n\n"
+				"GAME: " + Utils::String::toUpper(file->getName()) + "\n"
+				"PLAYER: " + Utils::String::toUpper(cfg.nickname) + "\n"
+				"MODE: " + Utils::String::toUpper(cfg.mode == "lan" ? "LAN" : cfg.onlineMethod) +
+				safetyNote;
+
+			window->pushGui(new GuiMsgBox(window, msg,
+				"START", [window, file]
+				{
+					NetplayLauncher::launchAsHost(window, file);
+				},
+				"CANCEL", nullptr));
+		},
+		"FIND A MATCH", [window, file]
+		{
+			// Search the lobby for sessions matching this specific game
+			std::string gameName = file->getName();
+			std::string systemName = file->getSystem()->getName();
+			window->pushGui(new GuiNetplayLobby(window, gameName, systemName));
+		},
+		"CANCEL", nullptr));
+}
+
+void GuiGamelistOptions::openSavedGames()
+{
+	// Capture what we need before deleting this menu
+	Window* window = mWindow;
+	std::string romPath = mSavedGamesRomPath;
+	std::string romName = mSavedGamesRomName;
+
+	// Close this options menu so the user doesn't return to a stale
+	// "SAVED GAMES (N)" count after deleting saves.
+	delete this;
+
+	window->pushGui(new GuiSavedGames(window, romPath, romName));
 }
 
 void GuiGamelistOptions::jumpToLetter()

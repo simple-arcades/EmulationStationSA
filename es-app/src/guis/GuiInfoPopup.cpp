@@ -1,13 +1,14 @@
 #include "guis/GuiInfoPopup.h"
 #include "SAStyle.h"
+#include "renderers/Renderer.h"
 
 #include "components/ComponentGrid.h"
 #include "components/NinePatchComponent.h"
 #include "components/TextComponent.h"
 #include <SDL_timer.h>
 
-GuiInfoPopup::GuiInfoPopup(Window* window, std::string message, int duration, int fadein, int fadeout, PopupPosition pos) :
-	GuiComponent(window), mMessage(message), mDuration(duration), mFadein(fadein), mFadeout(fadeout), running(true)
+GuiInfoPopup::GuiInfoPopup(Window* window, std::string message, int duration, int fadein, int fadeout, PopupPosition pos, bool dimBackground) :
+	GuiComponent(window), mMessage(message), mDuration(duration), mFadein(fadein), mFadeout(fadeout), running(true), mDimBackground(dimBackground)
 {
 	mFrame = new NinePatchComponent(window);
 	float maxWidth = Renderer::getScreenWidth() * 0.9f;
@@ -49,6 +50,10 @@ GuiInfoPopup::GuiInfoPopup(Window* window, std::string message, int duration, in
 		case POPUP_TOP_RIGHT:
 			posX = Renderer::getScreenWidth() - mSize.x() - margin;
 			posY = margin;
+			break;
+		case POPUP_CENTER:
+			posX = Renderer::getScreenWidth() * 0.5f - mSize.x() * 0.5f;
+			posY = Renderer::getScreenHeight() * 0.5f - mSize.y() * 0.5f;
 			break;
 		case POPUP_BOTTOM_CENTER:
 			posX = Renderer::getScreenWidth() * 0.5f - mSize.x() * 0.5f;
@@ -95,6 +100,18 @@ void GuiInfoPopup::render(const Transform4x4f& /*parentTrans*/)
 	Transform4x4f trans = getTransform() * Transform4x4f::Identity();
 	if(running && updateState())
 	{
+		// Draw a semi-transparent black overlay behind the popup if requested.
+		// The overlay fades in/out with the same alpha as the popup itself.
+		if(mDimBackground)
+		{
+			// Scale alpha for the overlay — max ~60% opacity so it dims but doesn't black out
+			unsigned char dimAlpha = (unsigned char)(alpha * 0.6f);
+			Renderer::setMatrix(Transform4x4f::Identity());
+			Renderer::drawRect(0.0f, 0.0f,
+				(float)Renderer::getScreenWidth(), (float)Renderer::getScreenHeight(),
+				0x00000000 | dimAlpha, 0x00000000 | dimAlpha);
+		}
+
 		// if we're still supposed to be rendering it
 		Renderer::setMatrix(trans);
 		renderChildren(trans);

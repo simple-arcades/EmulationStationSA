@@ -638,6 +638,24 @@ void ViewController::reloadAll(bool themeChanged)
 	updateHelpPrompts();
 }
 
+void ViewController::reloadSystemListView()
+{
+	// Destroy and recreate the system carousel. This re-evaluates which
+	// systems have visible games, so systems that gained their first
+	// visible entry (or lost their last one) will appear/disappear.
+	mSystemListView.reset();
+	getSystemListView();
+
+	// If we're currently on the system select view, refresh it
+	if(mState.viewing == SYSTEM_SELECT)
+	{
+		SystemData* system = mState.getSystem();
+		goToSystemView(SystemData::sSystemVector.front());
+		mSystemListView->goToSystem(system, false);
+		mCurrentView = mSystemListView;
+	}
+}
+
 std::vector<HelpPrompt> ViewController::getHelpPrompts()
 {
 	std::vector<HelpPrompt> prompts;

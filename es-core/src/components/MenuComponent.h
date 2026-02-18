@@ -38,6 +38,12 @@ public:
 
 	void setTitle(const char* title, const std::shared_ptr<Font>& font);
 
+	// Subtitle: 1-2 lines of non-interactive text between title and list.
+	// Each line is a single string rendered as one TextComponent.
+	void setSubtitle(const std::string& line1, unsigned int line1Color,
+	                 const std::string& line2 = "", unsigned int line2Color = SA_TEXT_COLOR);
+	void clearSubtitle();
+
 	inline void setCursorToList() { mGrid.setCursorTo(mList); }
 	inline void setCursorToButtons() { assert(mButtonGrid); mGrid.setCursorTo(mButtonGrid); }
 
@@ -47,14 +53,19 @@ private:
 	void updateSize();
 	void updateGrid();
 	float getButtonGridHeight() const;
+	float getSubtitleHeight() const;
 
 	NinePatchComponent mBackground;
 	ComponentGrid mGrid;
 
 	std::shared_ptr<TextComponent> mTitle;
+	std::shared_ptr<ComponentGrid> mSubtitleGrid;
 	std::shared_ptr<ComponentList> mList;
 	std::shared_ptr<ComponentGrid> mButtonGrid;
 	std::vector< std::shared_ptr<ButtonComponent> > mButtons;
+
+	bool mHasSubtitle;
+	int mSubtitleLineCount;
 };
 
 #endif // ES_CORE_COMPONENTS_MENU_COMPONENT_H

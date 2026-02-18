@@ -11,6 +11,9 @@
 #include "SystemData.h"
 #include "Window.h"
 
+#include <set>
+#include <sstream>
+
 // buffer values for scrolling velocity (left, stopped, right)
 const int logoBuffersLeft[] = { -5, -2, -1 };
 const int logoBuffersRight[] = { 1, 2, 5 };
@@ -31,12 +34,32 @@ void SystemView::populate()
 {
 	mEntries.clear();
 
+	// Build a set of hidden system names from the setting
+	std::set<std::string> hiddenSystems;
+	{
+		std::string hiddenStr = Settings::getInstance()->getString("HiddenSystems");
+		if (!hiddenStr.empty())
+		{
+			std::istringstream ss(hiddenStr);
+			std::string token;
+			while (std::getline(ss, token, ';'))
+			{
+				if (!token.empty())
+					hiddenSystems.insert(token);
+			}
+		}
+	}
+
 	for(auto it = SystemData::sSystemVector.cbegin(); it != SystemData::sSystemVector.cend(); it++)
 	{
 		const std::shared_ptr<ThemeData>& theme = (*it)->getTheme();
 
 		if(mViewNeedsReload)
 			getViewElements(theme);
+
+		// Skip systems the user has hidden (but never skip protected systems)
+		if (hiddenSystems.count((*it)->getName()) > 0)
+			continue;
 
 		if((*it)->isVisible())
 		{

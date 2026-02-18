@@ -20,6 +20,29 @@ public:
 private:
 	void addEntry(const char* name, unsigned int color, bool add_arrow, const std::function<void()>& func);
 	void addVersionInfo();
+
+	// New top-level submenus
+	void openOnlinePlay();
+	void openSettings();
+	void openFactoryTools();
+
+	// Online Play submenus
+	void openBrowseOnlineGames();
+	void openBrowseLanGames();
+
+	// Settings submenus
+	void openGameplaySettings();
+	void openInputSettings();
+	void openUserInterfaceSettings();
+	void openUserResources();
+	void openHowToVideos();
+	static void launchExternalScript(Window* window, const std::string& scriptPath,
+	                                   bool needsSudo = false);
+
+	// Factory Tools submenus
+	void openFactoryUI();
+
+	// Existing functions (kept as-is)
 	void openCollectionSystemSettings();
 	void openConfigInput();
 	void openDeleteControllerProfile();
@@ -27,6 +50,12 @@ private:
 	void openQuitMenu();
 	void openScraperSettings();
 	void openScreensaverOptions();
+	void openControllerSettings();
+	void openWifiSettings();
+	void openBluetoothSettings();
+	void openTimezoneSettings();
+	void openNetplaySettings();
+	void openShowHideSystems();
 	void openSoundSettings();
 	void openUISettings();
 

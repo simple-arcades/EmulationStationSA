@@ -10,6 +10,10 @@
 
 #include "Log.h"
 
+// For reading the save state flag file
+#include <fstream>
+#include <string>
+
 int runShutdownCommand()
 {
 #ifdef WIN32 // windows
@@ -40,17 +44,40 @@ int runSystemCommand(const std::string& cmd_utf8)
 #else
 	int ret = system(cmd_utf8.c_str());
 
-	// When a game exits, onend.sh may have created /tmp/es-restart
-	// to signal that ES should restart (e.g. after a save state).
-	// Set a global flag HERE — at the exact moment system() returns.
-	// We cannot use SDL_PushEvent(SDL_QUIT) because ES flushes the
-	// event queue during its post-game resume/reinit sequence.
-	// The main loop checks pendingRestart directly — no events to
-	// consume, no file I/O, just a memory read.
-	if (access("/tmp/es-restart", F_OK) == 0)
+	// When a game exits, check if a save state was created during gameplay.
+	// The watcher script sets this flag to "1" when it detects a new save.
+	// We check it HERE — at the exact moment system() returns — before
+	// ES's resume/reinit sequence runs. If a save was detected, we set
+	// pendingSavestateRefresh so the main loop can reload the savestates
+	// gamelist in-place (no full ES restart needed).
+	const std::string flagPath = "/home/pi/simplearcades/flags/save_state_flag.flag";
+	if (access(flagPath.c_str(), F_OK) == 0)
 	{
-		LOG(LogInfo) << "SA_RESTART_TRIGGER: /tmp/es-restart detected after system command, setting pendingRestart";
-		pendingRestart = true;
+		std::ifstream flagFile(flagPath);
+		std::string flagValue;
+		if (flagFile.is_open())
+		{
+			std::getline(flagFile, flagValue);
+			flagFile.close();
+		}
+
+		// Trim whitespace
+		while (!flagValue.empty() && (flagValue.back() == ' ' || flagValue.back() == '\n' || flagValue.back() == '\r'))
+			flagValue.pop_back();
+
+		if (flagValue == "1")
+		{
+			LOG(LogInfo) << "SA_SAVESTATE: save_state_flag is '1' after game exit, setting pendingSavestateRefresh";
+			pendingSavestateRefresh = true;
+
+			// Reset the flag to "0" immediately so it doesn't fire again
+			std::ofstream resetFile(flagPath, std::ios::trunc);
+			if (resetFile.is_open())
+			{
+				resetFile << "0";
+				resetFile.close();
+			}
+		}
 	}
 
 	return ret;
@@ -59,6 +86,7 @@ int runSystemCommand(const std::string& cmd_utf8)
 
 QuitMode quitMode = QuitMode::QUIT;
 bool pendingRestart = false;
+bool pendingSavestateRefresh = false;
 
 int quitES(QuitMode mode)
 {

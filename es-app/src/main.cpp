@@ -3,6 +3,9 @@
 
 #include "guis/GuiDetectDevice.h"
 #include "guis/GuiMsgBox.h"
+#include "guis/GuiInfoPopup.h"
+#include "Gamelist.h"
+#include "FileFilterIndex.h"
 #include "utils/FileSystemUtil.h"
 #include "utils/ProfilingUtil.h"
 #include "views/ViewController.h"
@@ -22,6 +25,7 @@
 #include <SDL_main.h>
 #include <SDL_timer.h>
 #include <iostream>
+#include <fstream>
 #include <time.h>
 #ifdef WIN32
 #include <Windows.h>
@@ -429,6 +433,17 @@ int main(int argc, char* argv[])
 
 	SimpleArcadesMusicManager::getInstance().init();
 
+	// Reset the save state flag on startup so a stale "1" from a previous
+	// session (e.g. crash, power loss) doesn't trigger a gamelist reload.
+	{
+		std::ofstream resetFlag("/home/pi/simplearcades/flags/save_state_flag.flag", std::ios::trunc);
+		if (resetFlag.is_open())
+		{
+			resetFlag << "0";
+			resetFlag.close();
+		}
+	}
+
 	bool running = true;
 
 	while(running)
@@ -472,6 +487,105 @@ int main(int argc, char* argv[])
 			LOG(LogInfo) << "SA_RESTART_POLL: pendingRestart flag is set, exiting main loop";
 			running = false;
 			continue;
+		}
+
+		// Check if a save state was created during gameplay. Instead of
+		// restarting ES entirely, we reload only the savestates gamelist
+		// in-place and show a toast notification.
+		if(pendingSavestateRefresh)
+		{
+			LOG(LogInfo) << "SA_SAVESTATE: pendingSavestateRefresh flag is set, reloading savestates gamelist";
+			pendingSavestateRefresh = false;
+
+			// Find the "savestates" system
+			SystemData* savestatesSystem = nullptr;
+			for(auto it = SystemData::sSystemVector.cbegin(); it != SystemData::sSystemVector.cend(); it++)
+			{
+				if((*it)->getName() == "savestates")
+				{
+					savestatesSystem = *it;
+					break;
+				}
+			}
+
+			if(savestatesSystem)
+			{
+				LOG(LogInfo) << "SA_SAVESTATE: Found savestates system, reloading gamelist";
+
+				// Re-parse gamelist.xml from disk. The watcher already wrote
+				// the new <game> entry and created the .entry file, but ES's
+				// in-memory FileData tree doesn't know about it yet.
+				// parseGamelist() calls findOrCreateFile() which is additive —
+				// it only creates FileData nodes for paths not already in the
+				// tree, so existing entries are untouched.
+				parseGamelist(savestatesSystem);
+
+				// Fully rebuild the filter index for this system.
+				// parseGamelist() creates new FileData entries but does NOT
+				// add them to the filter index. In kiosk mode, the hidden
+				// filter requires hidden="false" explicitly — entries with
+				// no hidden tag get key "UNKNOWN" which fails the filter.
+				// Fix: normalize hidden metadata, rebuild index, re-apply filters.
+				{
+					FileFilterIndex* idx = savestatesSystem->getIndex();
+					idx->resetIndex();
+
+					FileData* root = savestatesSystem->getRootFolder();
+					std::vector<FileData*> allGames = root->getFilesRecursive(GAME);
+					for (auto* game : allGames)
+					{
+						// Ensure every entry has an explicit hidden value.
+						// Entries without <hidden> in gamelist.xml get empty
+						// metadata, which the kiosk filter treats as unknown
+						// and hides. Set to "false" so they pass the filter.
+						if (game->metadata.get("hidden").empty())
+						{
+							game->metadata.set("hidden", "false");
+						}
+						idx->addToIndex(game);
+					}
+
+					idx->setUIModeFilters();
+				}
+
+				LOG(LogInfo) << "SA_SAVESTATE: After parseGamelist — total games: "
+					<< savestatesSystem->getGameCount()
+					<< ", displayed games: "
+					<< savestatesSystem->getDisplayedGameCount()
+					<< ", isVisible: "
+					<< (savestatesSystem->isVisible() ? "YES" : "NO");
+
+				// Remove the old gamelist view entirely so it's rebuilt fresh.
+				// This avoids stale view state from previous delete/add cycles.
+				ViewController::get()->removeGameListView(savestatesSystem);
+
+				// Rebuild the gamelist view for this system (created fresh)
+				auto gameListView = ViewController::get()->getGameListView(savestatesSystem);
+				if(gameListView)
+				{
+					ViewController::get()->reloadGameListView(gameListView.get(), false);
+				}
+
+				// Always rebuild the system carousel after a savestate refresh.
+				// parseGamelist() may have changed visibility (e.g. placeholder
+				// toggled from visible to hidden), and the carousel needs to
+				// reflect the current set of visible systems.
+				ViewController::get()->reloadSystemListView();
+				LOG(LogInfo) << "SA_SAVESTATE: Gamelist and system carousel reloaded";
+
+				// Show a toast popup so the user knows their save was captured
+				window.setInfoPopup(new GuiInfoPopup(&window,
+					"YOUR GAME WAS SAVED! YOU'LL FIND IT IN THE SAVED GAMES SECTION",
+					4000,  // 4 seconds visible
+					500,   // fade in 500ms
+					500,   // fade out 500ms
+					POPUP_CENTER,
+					true));  // dim background
+			}
+			else
+			{
+				LOG(LogWarning) << "SA_SAVESTATE: Could not find 'savestates' system — gamelist not reloaded";
+			}
 		}
 
 		if(window.isSleeping())

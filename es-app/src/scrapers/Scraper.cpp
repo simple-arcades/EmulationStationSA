@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "Settings.h"
 #include "SystemData.h"
+#include "utils/FileSystemUtil.h"
 #include <FreeImage.h>
 #include <fstream>
 
@@ -141,30 +142,71 @@ std::unique_ptr<MDResolveHandle> resolveMetaDataAssets(const ScraperSearchResult
 
 MDResolveHandle::MDResolveHandle(const ScraperSearchResult& result, const ScraperSearchParams& search) : mResult(result)
 {
+	// Precompute the ROM directory for relative path conversion
+	std::string romDir = Utils::FileSystem::getParent(search.game->getPath());
+
 	if(!result.imageUrl.empty())
 	{
-
 		std::string ext;
 
-		// If we have a file extension returned by the scraper, then use it.
-		// Otherwise, try to guess it by the name of the URL, which point to an image.
 		if (!result.imageType.empty())
 		{
 			ext = result.imageType;
 		}else{
 			size_t dot = result.imageUrl.find_last_of('.');
-
 			if (dot != std::string::npos)
 				ext = result.imageUrl.substr(dot, std::string::npos);
 		}
 
 		std::string imgPath = getSaveAsPath(search, "image", ext);
 
-		mFuncs.push_back(ResolvePair(downloadImageAsync(result.imageUrl, imgPath), [this, imgPath]
+		// Convert to relative path for gamelist.xml
+		std::string imgRelPath = imgPath;
+		if (imgRelPath.find(romDir) == 0)
+			imgRelPath = "./" + imgRelPath.substr(romDir.length() + 1);
+
+		// Skip download if image already exists on disk
+		if (!Utils::FileSystem::exists(imgPath))
 		{
-			mResult.mdl.set("image", imgPath);
+			mFuncs.push_back(ResolvePair(downloadImageAsync(result.imageUrl, imgPath), [this, imgRelPath]
+			{
+				mResult.mdl.set("image", imgRelPath);
+				mResult.imageUrl = "";
+			}));
+		}
+		else
+		{
+			mResult.mdl.set("image", imgRelPath);
 			mResult.imageUrl = "";
-		}));
+		}
+	}
+
+	// Video download support
+	if (!result.videoUrl.empty())
+	{
+		std::string videoPath = getSaveAsPath(search, "video", ".mp4");
+
+		// Convert to relative path for gamelist.xml
+		std::string videoRelPath = videoPath;
+		if (videoRelPath.find(romDir) == 0)
+			videoRelPath = "./" + videoRelPath.substr(romDir.length() + 1);
+
+		// Skip download if video already exists on disk
+		if (!Utils::FileSystem::exists(videoPath))
+		{
+			mFuncs.push_back(ResolvePair(
+				std::unique_ptr<AsyncHandle>(new ImageDownloadHandle(result.videoUrl, videoPath, 0, 0)),
+				[this, videoRelPath]
+				{
+					mResult.mdl.set("video", videoRelPath);
+					mResult.videoUrl = "";
+				}));
+		}
+		else
+		{
+			mResult.mdl.set("video", videoRelPath);
+			mResult.videoUrl = "";
+		}
 	}
 }
 
@@ -304,20 +346,27 @@ bool resizeImage(const std::string& path, int maxWidth, int maxHeight)
 
 std::string getSaveAsPath(const ScraperSearchParams& params, const std::string& suffix, const std::string& extension)
 {
-	const std::string subdirectory = params.system->getName();
-	const std::string name = Utils::FileSystem::getStem(params.game->getPath()) + "-" + suffix;
+	// Simple Arcades folder structure:
+	//   [romdir]/media/images/[romStem].png   (for images)
+	//   [romdir]/media/videos/[romStem].mp4   (for videos)
+	const std::string romDir = Utils::FileSystem::getParent(params.game->getPath());
+	const std::string romStem = Utils::FileSystem::getStem(params.game->getPath());
 
-	std::string path = Utils::FileSystem::getHomePath() + "/.emulationstation/downloaded_images/";
+	std::string subdir;
+	if (suffix == "video")
+		subdir = "videos";
+	else
+		subdir = "images";
 
-	if(!Utils::FileSystem::exists(path))
+	std::string mediaDir = romDir + "/media/";
+	if (!Utils::FileSystem::exists(mediaDir))
+		Utils::FileSystem::createDirectory(mediaDir);
+
+	std::string path = mediaDir + subdir + "/";
+	if (!Utils::FileSystem::exists(path))
 		Utils::FileSystem::createDirectory(path);
 
-	path += subdirectory + "/";
-
-	if(!Utils::FileSystem::exists(path))
-		Utils::FileSystem::createDirectory(path);
-
-
-	path += name + extension;
+	// Use just the ROM stem (no "-image" suffix) to match Skraper output
+	path += romStem + extension;
 	return path;
 }

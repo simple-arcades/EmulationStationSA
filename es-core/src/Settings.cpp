@@ -100,7 +100,7 @@ void Settings::setDefaults()
 	mStringMap["TransitionStyle"] = "fade";
 	mStringMap["ThemeSet"] = "";
 	mStringMap["ScreenSaverBehavior"] = "dim";
-	mStringMap["Scraper"] = "TheGamesDB";
+	mStringMap["Scraper"] = "ScreenScraper";
 	mStringMap["GamelistViewStyle"] = "automatic";
 	mStringMap["SaveGamelistsMode"] = "on exit";
 
@@ -171,6 +171,8 @@ void Settings::setDefaults()
 	mBoolMap["ForceKiosk"] = false;
 	mBoolMap["ForceKid"] = false;
 	mBoolMap["ForceDisableFilters"] = false;
+
+	mStringMap["HiddenSystems"] = "";
 
 	mIntMap["WindowWidth"]   = 0;
 	mIntMap["WindowHeight"]  = 0;

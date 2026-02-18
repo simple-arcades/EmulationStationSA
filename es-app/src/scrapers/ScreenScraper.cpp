@@ -257,8 +257,27 @@ void ScreenScraperRequest::processGame(const pugi::xml_document& xmldoc, std::ve
 		if (!publisher.empty())
 			result.mdl.set("publisher", Utils::String::replace(publisher, "&nbsp;", " "));
 
-		// Players
-		result.mdl.set("players", game.child("joueurs").text().get());
+		// Players — normalize "1-2" / "1-4" to just the max number
+		// Required by Simple Arcades themes that expect a single digit
+		{
+			std::string playersRaw = game.child("joueurs").text().get();
+			if (!playersRaw.empty())
+			{
+				// Find hyphen or dash — take the number after it
+				size_t dash = playersRaw.find('-');
+				if (dash != std::string::npos && dash + 1 < playersRaw.length())
+					playersRaw = playersRaw.substr(dash + 1);
+
+				// Strip any remaining whitespace
+				while (!playersRaw.empty() && (playersRaw.front() == ' ' || playersRaw.back() == ' '))
+				{
+					if (playersRaw.front() == ' ') playersRaw.erase(0, 1);
+					if (!playersRaw.empty() && playersRaw.back() == ' ') playersRaw.pop_back();
+				}
+
+				result.mdl.set("players", playersRaw);
+			}
+		}
 
 		// TODO: Validate rating
 		if (Settings::getInstance()->getBool("ScrapeRatings") && game.child("note"))
@@ -316,6 +335,39 @@ void ScreenScraperRequest::processGame(const pugi::xml_document& xmldoc, std::ve
 				result.thumbnailUrl = result.imageUrl + "&maxheight=250";
 			}else{
 				LOG(LogDebug) << "Failed to find media XML node with name=" << ssConfig.media_name;
+			}
+
+			// Also look for video media
+			{
+				pugi::xml_node videoArt = pugi::xml_node(NULL);
+				pugi::xpath_node_set videoResults = media_list.select_nodes("media[@type='video']");
+
+				if (videoResults.size())
+				{
+					for (auto _region : std::vector<std::string>{ region, "wor", "us", "cus", "jp", "eu" })
+					{
+						if (videoArt)
+							break;
+
+						for (auto node : videoResults)
+						{
+							if (node.node().attribute("region").value() == _region)
+							{
+								videoArt = node.node();
+								break;
+							}
+						}
+					}
+
+					// If no region match, take the first one available
+					if (!videoArt && videoResults.size())
+						videoArt = videoResults.first().node();
+				}
+
+				if (videoArt)
+				{
+					result.videoUrl = Utils::String::replace(videoArt.text().get(), " ", "%20");
+				}
 			}
 
 		}
