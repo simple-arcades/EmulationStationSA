@@ -100,6 +100,9 @@
 #define SA_LAUNCH_VIDEO_CONFIG "/home/pi/simplearcades/config/videos/game_launch.cfg"
 #define SA_LAUNCH_VIDEO_BASE   "/home/pi/simplearcades/media/videos/game_start/"
 
+// --- GAME EXIT VIDEO CONFIG ---
+#define SA_EXIT_VIDEO_CONFIG   "/home/pi/simplearcades/config/videos/game_exit.cfg"
+
 // ============================================================================
 //  Helper: SA font accessor (performance-optimized)
 //

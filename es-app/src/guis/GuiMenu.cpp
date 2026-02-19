@@ -977,6 +977,42 @@ void GuiMenu::openGameplaySettings()
 	row.makeAcceptInputHandler([window] { openGameLaunchVideoSettings(window); });
 	s->addRow(row);
 
+	// GAME EXIT VIDEO ON/OFF
+	{
+		// Load current setting.
+		bool exitEnabled = true;
+		const std::string exitCfgPath = SA_EXIT_VIDEO_CONFIG;
+		if (Utils::FileSystem::exists(exitCfgPath))
+		{
+			std::ifstream in(exitCfgPath);
+			std::string line;
+			while (std::getline(in, line))
+			{
+				while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
+					line.pop_back();
+				auto eq = line.find('=');
+				if (eq == std::string::npos) continue;
+				if (line.substr(0, eq) == "enabled")
+					exitEnabled = (line.substr(eq + 1) == "1");
+			}
+		}
+
+		auto exitSwitch = std::make_shared<SwitchComponent>(window);
+		exitSwitch->setState(exitEnabled);
+		s->addWithLabel("GAME EXIT VIDEO", exitSwitch);
+
+		s->addSaveFunc([exitSwitch]
+		{
+			const std::string path = SA_EXIT_VIDEO_CONFIG;
+			const std::string dir = Utils::FileSystem::getParent(path);
+			if (!dir.empty() && !Utils::FileSystem::exists(dir))
+				Utils::FileSystem::createDirectory(dir);
+			std::ofstream out(path, std::ios::trunc);
+			if (out.good())
+				out << "enabled=" << (exitSwitch->getState() ? "1" : "0") << "\n";
+		});
+	}
+
 	mWindow->pushGui(s);
 }
 
@@ -1051,6 +1087,29 @@ void GuiMenu::openInputSettings()
 void GuiMenu::openUserInterfaceSettings()
 {
 	auto s = new GuiSettings(mWindow, "USER INTERFACE");
+	Window* window = mWindow;
+
+	// BOOT SPLASH VIDEO ON/OFF
+	{
+		// Check if the asplashscreen service is currently enabled.
+		bool splashEnabled = (::system("systemctl is-enabled asplashscreen.service >/dev/null 2>&1") == 0);
+
+		auto splashSwitch = std::make_shared<SwitchComponent>(window);
+		splashSwitch->setState(splashEnabled);
+		s->addWithLabel("BOOT SPLASH VIDEO", splashSwitch);
+
+		s->addSaveFunc([splashSwitch, splashEnabled]
+		{
+			bool newState = splashSwitch->getState();
+			if (newState != splashEnabled)
+			{
+				if (newState)
+					::system("sudo systemctl enable asplashscreen.service >/dev/null 2>&1");
+				else
+					::system("sudo systemctl disable asplashscreen.service >/dev/null 2>&1");
+			}
+		});
+	}
 
 	// SHOW / HIDE SYSTEMS
 	ComponentListRow row;
@@ -1252,31 +1311,47 @@ void GuiMenu::openHowToVideos()
 		row.addElement(std::make_shared<TextComponent>(window,
 			name, saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 		row.makeAcceptInputHandler([window, videoPath] {
-			// Deinit ES, play video, reinit
-			LOG(LogInfo) << "GuiMenu: Playing how-to video: " << videoPath;
+			// Show a popup with PLAY/BACK options. PLAY launches the video.
+			window->pushGui(new GuiMsgBox(window,
+				"Once the video starts playing,\n"
+				"hold START for 1 second to exit.",
+				"PLAY", [window, videoPath]
+				{
+					LOG(LogInfo) << "GuiMenu: Playing how-to video: " << videoPath;
 
-			AudioManager::getInstance()->deinit();
-			VolumeControl::getInstance()->deinit();
-			InputManager::getInstance()->deinit();
-			window->deinit();
+					AudioManager::getInstance()->deinit();
+					VolumeControl::getInstance()->deinit();
+					InputManager::getInstance()->deinit();
+					window->deinit();
 
-			::system("clear >/dev/tty1 2>/dev/null");
+					::system("clear >/dev/tty1 2>/dev/null");
 
-			SimpleArcadesMusicManager::getInstance().onGameLaunched();
+					SimpleArcadesMusicManager::getInstance().onGameLaunched();
 
-			// Try omxplayer first (Pi native), fall back to vlc
-			std::string cmd = "omxplayer -b \"" + videoPath + "\" </dev/null >/dev/null 2>&1";
-			if (::system("command -v omxplayer >/dev/null 2>&1") != 0)
-				cmd = "cvlc --fullscreen --play-and-exit \"" + videoPath + "\" >/dev/null 2>&1";
+					// Use sa_play_video.sh for hold-START-to-exit support
+					std::string helper = Utils::FileSystem::getHomePath() +
+						"/simplearcades/scripts/utilities/sa_play_video.sh";
+					std::string cmd;
+					if (Utils::FileSystem::exists(helper))
+						cmd = "bash \"" + helper + "\" \"" + videoPath + "\"";
+					else
+					{
+						// Fallback: plain omxplayer
+						cmd = "omxplayer -b \"" + videoPath + "\" </dev/null >/dev/null 2>&1";
+						if (::system("command -v omxplayer >/dev/null 2>&1") != 0)
+							cmd = "cvlc --fullscreen --play-and-exit \"" + videoPath + "\" >/dev/null 2>&1";
+					}
 
-			runSystemCommand(cmd);
+					runSystemCommand(cmd);
 
-			SimpleArcadesMusicManager::getInstance().onGameReturned();
+					SimpleArcadesMusicManager::getInstance().onGameReturned();
 
-			window->init();
-			InputManager::getInstance()->init();
-			VolumeControl::getInstance()->init();
-			window->normalizeNextUpdate();
+					window->init();
+					InputManager::getInstance()->init();
+					VolumeControl::getInstance()->init();
+					window->normalizeNextUpdate();
+				},
+				"BACK", nullptr));
 		});
 		s->addRow(row);
 	}
