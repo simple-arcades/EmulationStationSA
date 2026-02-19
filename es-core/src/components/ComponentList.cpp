@@ -76,16 +76,75 @@ bool ComponentList::input(InputConfig* config, Input input)
 	// input handler didn't consume the input - try to scroll
 	if(config->isMappedLike("up", input))
 	{
-		return listInput(input.value != 0 ? -1 : 0);
+		if(input.value != 0)
+		{
+			// Find previous visible row.
+			int target = mCursor - 1;
+			while(target >= 0 && !mEntries.at(target).data.visible)
+				target--;
+			if(target >= 0)
+				return listInput(target - mCursor);
+			return false;
+		}
+		return listInput(0);
 	}else if(config->isMappedLike("down", input))
 	{
-		return listInput(input.value != 0 ? 1 : 0);
-
+		if(input.value != 0)
+		{
+			// Find next visible row.
+			int target = mCursor + 1;
+			while(target < (int)mEntries.size() && !mEntries.at(target).data.visible)
+				target++;
+			if(target < (int)mEntries.size())
+				return listInput(target - mCursor);
+			return false;
+		}
+		return listInput(0);
 	}else if(config->isMappedLike("leftshoulder", input))
 	{
-		return listInput(input.value != 0 ? -6 : 0);
+		if(input.value != 0)
+		{
+			// Jump up ~6 visible rows.
+			int count = 0;
+			int target = mCursor - 1;
+			while(target >= 0 && count < 6)
+			{
+				if(mEntries.at(target).data.visible)
+					count++;
+				if(count < 6)
+					target--;
+			}
+			if(target < 0) target = 0;
+			// Snap to nearest visible.
+			while(target < (int)mEntries.size() && !mEntries.at(target).data.visible)
+				target++;
+			if(target < (int)mEntries.size() && target != mCursor)
+				return listInput(target - mCursor);
+			return false;
+		}
+		return listInput(0);
 	}else if(config->isMappedLike("rightshoulder", input)){
-		return listInput(input.value != 0 ? 6 : 0);
+		if(input.value != 0)
+		{
+			// Jump down ~6 visible rows.
+			int count = 0;
+			int target = mCursor + 1;
+			while(target < (int)mEntries.size() && count < 6)
+			{
+				if(mEntries.at(target).data.visible)
+					count++;
+				if(count < 6)
+					target++;
+			}
+			if(target >= (int)mEntries.size()) target = (int)mEntries.size() - 1;
+			// Snap to nearest visible.
+			while(target >= 0 && !mEntries.at(target).data.visible)
+				target--;
+			if(target >= 0 && target != mCursor)
+				return listInput(target - mCursor);
+			return false;
+		}
+		return listInput(0);
 	}
 
 	return false;
@@ -178,6 +237,11 @@ void ComponentList::render(const Transform4x4f& parentTrans)
 	for(unsigned int i = 0; i < mEntries.size(); i++)
 	{
 		auto& entry = mEntries.at(i);
+
+		// Skip hidden rows entirely.
+		if(!entry.data.visible)
+			continue;
+
 		drawAll = !mFocused || i != (unsigned int)mCursor;
 		for(auto it = entry.data.elements.cbegin(); it != entry.data.elements.cend(); it++)
 		{
@@ -221,6 +285,10 @@ void ComponentList::render(const Transform4x4f& parentTrans)
 	float y = 0;
 	for(unsigned int i = 0; i < mEntries.size(); i++)
 	{
+		// Skip hidden rows — no separator line either.
+		if(!mEntries.at(i).data.visible)
+			continue;
+
 		Renderer::drawRect(0.0f, y, mSize.x(), 1.0f, SA_SEPARATOR_COLOR, SA_SEPARATOR_COLOR);
 		y += getRowHeight(mEntries.at(i).data);
 	}
@@ -231,6 +299,10 @@ void ComponentList::render(const Transform4x4f& parentTrans)
 
 float ComponentList::getRowHeight(const ComponentListRow& row) const
 {
+	// Hidden rows have zero height.
+	if(!row.visible)
+		return 0;
+
 	// returns the highest component height found in the row
 	float height = 0;
 	for(unsigned int i = 0; i < row.elements.size(); i++)
@@ -294,6 +366,59 @@ void ComponentList::updateElementSize(const ComponentListRow& row)
 	{
 		(*it)->setSize(width, (*it)->getSize().y());
 	}
+}
+
+void ComponentList::updateAllElements()
+{
+	for(auto it = mEntries.cbegin(); it != mEntries.cend(); it++)
+	{
+		updateElementSize(it->data);
+		updateElementPosition(it->data);
+	}
+}
+
+void ComponentList::setRowVisible(int rowIndex, bool visible)
+{
+	if(rowIndex < 0 || rowIndex >= (int)mEntries.size())
+		return;
+
+	if(mEntries.at(rowIndex).data.visible == visible)
+		return; // no change
+
+	mEntries.at(rowIndex).data.visible = visible;
+
+	// Reflow all element positions since row heights changed.
+	updateAllElements();
+
+	// If the cursor is now on a hidden row, move it to the nearest visible row.
+	if(!mEntries.at(mCursor).data.visible)
+	{
+		// Try forward first.
+		int newCursor = mCursor + 1;
+		while(newCursor < (int)mEntries.size() && !mEntries.at(newCursor).data.visible)
+			newCursor++;
+
+		if(newCursor >= (int)mEntries.size())
+		{
+			// Try backward.
+			newCursor = mCursor - 1;
+			while(newCursor >= 0 && !mEntries.at(newCursor).data.visible)
+				newCursor--;
+		}
+
+		if(newCursor >= 0 && newCursor < (int)mEntries.size())
+		{
+			mCursor = newCursor;
+			onCursorChanged(CURSOR_STOPPED);
+		}
+	}
+	else
+	{
+		// Recalculate selector bar position even if cursor didn't move.
+		onCursorChanged(CURSOR_STOPPED);
+	}
+
+	updateCameraOffset();
 }
 
 void ComponentList::textInput(const char* text)

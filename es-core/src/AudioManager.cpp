@@ -197,6 +197,33 @@ namespace
 		return saGetHome() + "/simplearcades/config/music/shuffle_allowlist.cfg";
 	}
 
+	// ---- Music v3: Radio + Spotify helpers ----
+
+	static std::string saRadioStationsPath()
+	{
+		return saGetHome() + "/simplearcades/config/music/radio_stations.cfg";
+	}
+
+	static std::string saRadioImageDir()
+	{
+		return saGetHome() + "/simplearcades/media/music/images/radio";
+	}
+
+	static std::string saFindRadioCoverArt(const std::string& stationName)
+	{
+		const std::string dir = saRadioImageDir();
+		if (!stationName.empty() && !dir.empty())
+		{
+			const std::string png = dir + "/" + stationName + ".png";
+			if (Utils::FileSystem::exists(png)) return png;
+			const std::string jpg = dir + "/" + stationName + ".jpg";
+			if (Utils::FileSystem::exists(jpg)) return jpg;
+		}
+		const std::string fallback = saGetHome() + "/simplearcades/media/music/images/no_art_found.jpg";
+		if (Utils::FileSystem::exists(fallback)) return fallback;
+		return "";
+	}
+
 	static bool saIsMp3File(const std::string& path)
 	{
 		const std::string ext = Utils::String::toLower(Utils::FileSystem::getExtension(path));
@@ -508,6 +535,9 @@ SimpleArcadesMusicManager::SimpleArcadesMusicManager()
 	, mIndex(0)
 	, mPid(-1)
 	, mNewTrackFlag(false)
+	, mRadioIndex(0)
+	, mPlayDuringGameplay(false)
+	, mGameplayVolume(50)
 {
 }
 
@@ -539,21 +569,39 @@ void SimpleArcadesMusicManager::init()
 		// Kick playback if enabled.
 		if (mEnabled && !mPausedForGame)
 		{
-			mRebuildRequested = true;
-			mRestartRequested = false;
-			mAdvanceRequested = 0;
-			mCv.notify_all();
+			if (mMode == "spotify")
+			{
+				// Spotify mode: start the sa-spotify service.
+				// Do it outside the lock below.
+			}
+			else
+			{
+				mRebuildRequested = true;
+				mRestartRequested = false;
+				mAdvanceRequested = 0;
+				mCv.notify_all();
+			}
 		}
+	}
+
+	// Start spotify service if that's the active mode (outside lock).
+	{
+		std::lock_guard<std::mutex> lock(mMutex);
+		if (mEnabled && !mPausedForGame && mMode == "spotify")
+			startSpotifyService();
 	}
 }
 
 void SimpleArcadesMusicManager::shutdown()
 {
+	bool wasSpotify = false;
+
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
 		if (!mInit)
 			return;
 
+		wasSpotify = (mMode == "spotify");
 		mStopThread = true;
 
 		if (mPid > 0)
@@ -564,6 +612,10 @@ void SimpleArcadesMusicManager::shutdown()
 
 	if (mThread.joinable())
 		mThread.join();
+
+	// Stop spotify service if it was running.
+	if (wasSpotify)
+		stopSpotifyService();
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
@@ -582,6 +634,8 @@ bool SimpleArcadesMusicManager::isEnabled() const
 void SimpleArcadesMusicManager::setEnabled(bool enabled)
 {
 	pid_t pidToKill = -1;
+	bool startSpotify = false;
+	bool stopSpotify = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
@@ -596,14 +650,21 @@ void SimpleArcadesMusicManager::setEnabled(bool enabled)
 
 		if (!mEnabled)
 		{
-			if (mPid > 0)
+			if (mMode == "spotify")
+				stopSpotify = true;
+			else if (mPid > 0)
 				pidToKill = static_cast<pid_t>(mPid);
 		}
 		else
 		{
-			mRebuildRequested = true;
-			mRestartRequested = false;
-			mAdvanceRequested = 0;
+			if (mMode == "spotify")
+				startSpotify = true;
+			else
+			{
+				mRebuildRequested = true;
+				mRestartRequested = false;
+				mAdvanceRequested = 0;
+			}
 		}
 
 		mCv.notify_all();
@@ -611,6 +672,10 @@ void SimpleArcadesMusicManager::setEnabled(bool enabled)
 
 	if (pidToKill > 0)
 		saKillMusicPid(pidToKill);
+	if (startSpotify)
+		startSpotifyService();
+	if (stopSpotify)
+		stopSpotifyService();
 }
 
 int SimpleArcadesMusicManager::getVolumePercent() const
@@ -656,24 +721,36 @@ std::string SimpleArcadesMusicManager::getMode() const
 void SimpleArcadesMusicManager::setMode(const std::string& mode)
 {
 	pid_t pidToKill = -1;
+	bool startSpotify = false;
+	bool stopSpotify = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
-		const std::string newMode = (mode == "folder" || mode == "shuffle_all") ? mode : std::string("shuffle_all");
+		const std::string newMode = (mode == "folder" || mode == "shuffle_all" || mode == "radio" || mode == "spotify") ? mode : std::string("shuffle_all");
 
 		// No-change guard.
 		if (mMode == newMode)
 			return;
 
+		const std::string oldMode = mMode;
 		mMode = newMode;
 
 		if (mEnabled && !mPausedForGame && !mPausedForScreensaver)
 		{
-			mRebuildRequested = true;
-			mRestartRequested = false;
-
-			if (mPid > 0)
+			// Stop old mode.
+			if (oldMode == "spotify")
+				stopSpotify = true;
+			else if (mPid > 0)
 				pidToKill = static_cast<pid_t>(mPid);
+
+			// Start new mode.
+			if (newMode == "spotify")
+				startSpotify = true;
+			else
+			{
+				mRebuildRequested = true;
+				mRestartRequested = false;
+			}
 		}
 
 		mCv.notify_all();
@@ -681,6 +758,10 @@ void SimpleArcadesMusicManager::setMode(const std::string& mode)
 
 	if (pidToKill > 0)
 		saKillMusicPid(pidToKill);
+	if (stopSpotify)
+		stopSpotifyService();
+	if (startSpotify)
+		startSpotifyService();
 }
 
 std::string SimpleArcadesMusicManager::getFolder() const
@@ -723,6 +804,147 @@ std::vector<std::string> SimpleArcadesMusicManager::getAvailableFolders() const
 	return saListSoundtrackFolders();
 }
 
+
+// ---- Internet Radio ----
+
+void SimpleArcadesMusicManager::loadRadioStations()
+{
+	std::lock_guard<std::mutex> lock(mMutex);
+	loadRadioStationsLocked();
+}
+
+std::vector<RadioStation> SimpleArcadesMusicManager::getRadioStations() const
+{
+	std::lock_guard<std::mutex> lock(mMutex);
+	return mRadioStations;
+}
+
+int SimpleArcadesMusicManager::getRadioStationIndex() const
+{
+	std::lock_guard<std::mutex> lock(mMutex);
+	return mRadioIndex;
+}
+
+std::string SimpleArcadesMusicManager::getRadioStationName() const
+{
+	std::lock_guard<std::mutex> lock(mMutex);
+	if (mRadioIndex >= 0 && mRadioIndex < static_cast<int>(mRadioStations.size()))
+		return mRadioStations[mRadioIndex].name;
+	return "";
+}
+
+void SimpleArcadesMusicManager::setRadioStation(int index)
+{
+	pid_t pidToKill = -1;
+	{
+		std::lock_guard<std::mutex> lock(mMutex);
+		if (mRadioStations.empty()) return;
+		const int clamped = saClamp(index, 0, static_cast<int>(mRadioStations.size()) - 1);
+		if (mRadioIndex == clamped) return;
+		mRadioIndex = clamped;
+		if (mMode == "radio" && mEnabled && !mPausedForGame && !mPausedForScreensaver)
+		{
+			mRebuildRequested = true;
+			if (mPid > 0) pidToKill = static_cast<pid_t>(mPid);
+		}
+		mCv.notify_all();
+	}
+	if (pidToKill > 0) saKillMusicPid(pidToKill);
+}
+
+void SimpleArcadesMusicManager::loadRadioStationsLocked()
+{
+	mRadioStations.clear();
+	const std::string path = saRadioStationsPath();
+	if (!Utils::FileSystem::exists(path)) return;
+
+	std::ifstream in(path);
+	if (!in.is_open()) return;
+
+	std::string line;
+	while (std::getline(in, line))
+	{
+		line = saTrim(line);
+		if (line.empty() || line[0] == '#') continue;
+		const size_t eq = line.find('=');
+		if (eq == std::string::npos) continue;
+		std::string name = saTrim(line.substr(0, eq));
+		std::string url  = saTrim(line.substr(eq + 1));
+		if (!name.empty() && !url.empty())
+		{
+			RadioStation station;
+			station.name = name;
+			station.url = url;
+			mRadioStations.push_back(station);
+		}
+	}
+
+	LOG(LogInfo) << "SimpleArcadesMusicManager: Loaded " << mRadioStations.size() << " radio station(s).";
+	if (!mRadioStations.empty() && mRadioIndex >= static_cast<int>(mRadioStations.size()))
+		mRadioIndex = 0;
+}
+
+
+// ---- Spotify ----
+
+bool SimpleArcadesMusicManager::isSpotifyAvailable()
+{
+	return (std::system("which librespot > /dev/null 2>&1") == 0);
+}
+
+void SimpleArcadesMusicManager::startSpotifyService()
+{
+	std::system("sudo systemctl start sa-spotify 2>/dev/null");
+}
+
+void SimpleArcadesMusicManager::stopSpotifyService()
+{
+	std::system("sudo systemctl stop sa-spotify 2>/dev/null");
+}
+
+void SimpleArcadesMusicManager::pauseSpotifyService()
+{
+	// Use systemctl kill to send SIGSTOP to the exact librespot PID tracked by systemd.
+	// This avoids pkill -f which can match its own shell wrapper and freeze it.
+	std::system("sudo systemctl kill -s SIGSTOP sa-spotify 2>/dev/null");
+}
+
+void SimpleArcadesMusicManager::resumeSpotifyService()
+{
+	// Resume the suspended librespot process via SIGCONT.
+	std::system("sudo systemctl kill -s SIGCONT sa-spotify 2>/dev/null");
+}
+
+
+// ---- Gameplay volume settings ----
+
+void SimpleArcadesMusicManager::setPlayDuringGameplay(bool play)
+{
+	std::lock_guard<std::mutex> lock(mMutex);
+	mPlayDuringGameplay = play;
+}
+
+bool SimpleArcadesMusicManager::getPlayDuringGameplay() const
+{
+	std::lock_guard<std::mutex> lock(mMutex);
+	return mPlayDuringGameplay;
+}
+
+void SimpleArcadesMusicManager::setGameplayVolume(int percent)
+{
+	std::lock_guard<std::mutex> lock(mMutex);
+	mGameplayVolume = saClamp(percent, 10, 100);
+}
+
+int SimpleArcadesMusicManager::getGameplayVolume() const
+{
+	std::lock_guard<std::mutex> lock(mMutex);
+	return mGameplayVolume;
+}
+
+
+// ---- Track controls ----
+
 void SimpleArcadesMusicManager::nextTrack()
 {
 	pid_t pidToKill = -1;
@@ -762,12 +984,14 @@ void SimpleArcadesMusicManager::prevTrack()
 void SimpleArcadesMusicManager::onGameLaunched()
 {
 	pid_t pidToKill = -1;
+	bool isSpotify = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
 		if (!mEnabled)
 			return;
 
+		isSpotify = (mMode == "spotify");
 		mPausedForGame = true;
 		mAdvanceRequested = 0;
 		mRestartRequested = false;
@@ -778,21 +1002,29 @@ void SimpleArcadesMusicManager::onGameLaunched()
 		mCv.notify_all();
 	}
 
-	if (pidToKill > 0)
+	if (isSpotify)
+		pauseSpotifyService();
+	else if (pidToKill > 0)
 		saKillMusicPid(pidToKill);
 }
 
 void SimpleArcadesMusicManager::onGameReturned()
 {
+	bool isSpotify = false;
+
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
 		if (!mEnabled)
 			return;
 
+		isSpotify = (mMode == "spotify");
 		mPausedForGame = false;
 		mRestartRequested = true; // keep index; just start again
 		mCv.notify_all();
 	}
+
+	if (isSpotify)
+		resumeSpotifyService();
 }
 
 // --- Music v2: Screensaver hooks ---
@@ -1094,6 +1326,29 @@ void SimpleArcadesMusicManager::rebuildPlaylistLocked()
 
 	const std::string root = saMusicRootDir();
 
+	if (mMode == "radio")
+	{
+		// Radio mode: fill playlist with station URLs.
+		if (mRadioStations.empty())
+			loadRadioStationsLocked();
+
+		if (!mRadioStations.empty())
+		{
+			for (const auto& station : mRadioStations)
+				mPlaylist.push_back(station.url);
+
+			// Start at the selected station.
+			mIndex = saClamp(mRadioIndex, 0, static_cast<int>(mPlaylist.size()) - 1);
+		}
+		return;
+	}
+
+	if (mMode == "spotify")
+	{
+		// Spotify mode: service handles playback, nothing to do here.
+		return;
+	}
+
 	if (mMode == "folder")
 	{
 		const std::string folderPath = root + "/" + mFolder;
@@ -1129,7 +1384,7 @@ void SimpleArcadesMusicManager::rebuildPlaylistLocked()
 		mMode = "shuffle_all";
 	}
 
-	// Shuffle for variety.
+	// Shuffle for variety (not for radio — station order matters).
 	if (mPlaylist.size() > 1)
 	{
 		std::mt19937 rng(static_cast<unsigned int>(
@@ -1150,9 +1405,11 @@ void SimpleArcadesMusicManager::threadMain()
 			std::unique_lock<std::mutex> lock(mMutex);
 
 			// Wait until we're enabled and not paused, and either need a rebuild or need to start.
+			// In spotify mode, the thread has nothing to do — the sa-spotify service handles playback.
 			mCv.wait(lock, [this] {
 				return mStopThread ||
 					(mEnabled && !mPausedForGame && !mPausedForScreensaver &&
+					 mMode != "spotify" &&
 						(mPid <= 0 || mRebuildRequested || mRestartRequested));
 			});
 
@@ -1191,6 +1448,21 @@ void SimpleArcadesMusicManager::threadMain()
 				mPid = static_cast<int>(pid);
 
 				// Set new track info for popup display.
+				if (mMode == "radio")
+				{
+					const int ri = saClamp(mIndex, 0,
+						mRadioStations.empty() ? 0 : static_cast<int>(mRadioStations.size()) - 1);
+					const std::string stationName =
+						(ri < static_cast<int>(mRadioStations.size()))
+						? mRadioStations[ri].name : "Internet Radio";
+
+					mNewTrackSoundtrack = "Internet Radio";
+					mNewTrackName       = stationName;
+					mNewTrackCoverPath  = saFindRadioCoverArt(stationName);
+					mNewTrackFlag       = true;
+					mRadioIndex = mIndex;
+				}
+				else
 				{
 					const std::string rel = saRelativePath(track);
 					const std::string folder = saExtractSoundtrackFolder(rel);
@@ -1239,6 +1511,12 @@ void SimpleArcadesMusicManager::threadMain()
 				mIndex += mAdvanceRequested;
 				mAdvanceRequested = 0;
 			}
+			else if (mMode == "radio")
+			{
+				// Radio stream ended unexpectedly (network drop).
+				// Stay on same station index — it will reconnect.
+				// Brief delay to avoid tight reconnect loop.
+			}
 			else
 			{
 				// Natural end -> next
@@ -1252,6 +1530,18 @@ void SimpleArcadesMusicManager::threadMain()
 
 			// Loop will start the next track on the next iteration.
 			mCv.notify_all();
+		}
+
+		// Radio reconnect delay (outside lock).
+		// Prevents tight loop if a radio stream keeps dropping immediately.
+		{
+			bool doDelay = false;
+			{
+				std::lock_guard<std::mutex> lock(mMutex);
+				doDelay = (mMode == "radio" && mAdvanceRequested == 0 && !mStopThread && mEnabled);
+			}
+			if (doDelay)
+				std::this_thread::sleep_for(std::chrono::seconds(3));
 		}
 	}
 }
@@ -1267,6 +1557,10 @@ void SimpleArcadesMusicManager::loadConfig()
 	mFolder = "";
 	mPlayDuringScreensaver = true;
 	mShowTrackPopup = true;
+	mPlayDuringGameplay = false;
+	mGameplayVolume = 50;
+
+	std::string savedStationName;
 
 	const std::string cfg = saMusicConfigPath();
 	if (!Utils::FileSystem::exists(cfg))
@@ -1308,15 +1602,21 @@ void SimpleArcadesMusicManager::loadConfig()
 		else if (key == "mode")
 		{
 			val = Utils::String::toLower(val);
-			if (val == "folder" || val == "shuffle_all")
+			if (val == "folder" || val == "shuffle_all" || val == "radio" || val == "spotify")
 				mMode = val;
 		}
 		else if (key == "folder")
 			mFolder = val;
+		else if (key == "station")
+			savedStationName = val;
 		else if (key == "play_during_screensaver")
 			mPlayDuringScreensaver = (val == "1" || Utils::String::toLower(val) == "true" || Utils::String::toLower(val) == "yes");
 		else if (key == "show_track_popup")
 			mShowTrackPopup = (val == "1" || Utils::String::toLower(val) == "true" || Utils::String::toLower(val) == "yes");
+		else if (key == "play_during_gameplay")
+			mPlayDuringGameplay = (val == "1" || Utils::String::toLower(val) == "true");
+		else if (key == "gameplay_volume")
+			mGameplayVolume = saClamp(std::atoi(val.c_str()), 10, 100);
 	}
 
 	// If folder is empty, default to first available.
@@ -1326,6 +1626,24 @@ void SimpleArcadesMusicManager::loadConfig()
 		if (!folders.empty())
 			mFolder = folders.front();
 	}
+
+	// Load radio stations and resolve saved station name to index.
+	loadRadioStationsLocked();
+	if (!savedStationName.empty())
+	{
+		for (int i = 0; i < static_cast<int>(mRadioStations.size()); ++i)
+		{
+			if (mRadioStations[i].name == savedStationName)
+			{
+				mRadioIndex = i;
+				break;
+			}
+		}
+	}
+
+	// Validate spotify mode.
+	if (mMode == "spotify" && !isSpotifyAvailable())
+		mMode = "shuffle_all";
 
 	// Load shuffle allowlist.
 	loadShuffleAllowlistLocked();
@@ -1350,8 +1668,17 @@ void SimpleArcadesMusicManager::saveConfig()
 	out << "volume=" << mVolumePercent << "\n";
 	out << "mode=" << mMode << "\n";
 	out << "folder=" << mFolder << "\n";
+
+	// Save radio station by name (survives reordering of radio_stations.cfg).
+	if (mRadioIndex >= 0 && mRadioIndex < static_cast<int>(mRadioStations.size()))
+		out << "station=" << mRadioStations[mRadioIndex].name << "\n";
+	else
+		out << "station=\n";
+
 	out << "play_during_screensaver=" << (mPlayDuringScreensaver ? "1" : "0") << "\n";
 	out << "show_track_popup=" << (mShowTrackPopup ? "1" : "0") << "\n";
+	out << "play_during_gameplay=" << (mPlayDuringGameplay ? "1" : "0") << "\n";
+	out << "gameplay_volume=" << mGameplayVolume << "\n";
 	out.close();
 
 	// Also persist the shuffle allowlist.

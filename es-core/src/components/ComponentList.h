@@ -24,6 +24,11 @@ struct ComponentListRow
 	// the rightmost element in the currently selected row.
 	std::function<bool(InputConfig*, Input)> input_handler;
 
+	// Row visibility flag. Hidden rows take up no space and are skipped by cursor navigation.
+	bool visible;
+
+	ComponentListRow() : visible(true) {}
+
 	inline void addElement(const std::shared_ptr<GuiComponent>& component, bool resize_width, bool invert_when_selected = true)
 	{
 		elements.push_back(ComponentListElement(component, resize_width, invert_when_selected));
@@ -69,6 +74,10 @@ public:
 	inline void setCursorChangedCallback(const std::function<void(CursorState state)>& callback) { mCursorChangedCallback = callback; };
 	inline const std::function<void(CursorState state)>& getCursorChangedCallback() const { return mCursorChangedCallback; };
 
+	// Show or hide a row by index. Hidden rows take up no space and are
+	// skipped during cursor navigation. The list is reflowed in-place.
+	void setRowVisible(int rowIndex, bool visible);
+
 protected:
 	void onCursorChanged(const CursorState& state) override;
 
@@ -78,6 +87,9 @@ private:
 	void updateCameraOffset();
 	void updateElementPosition(const ComponentListRow& row);
 	void updateElementSize(const ComponentListRow& row);
+
+	// Reposition all elements (called after visibility changes).
+	void updateAllElements();
 
 	float getRowHeight(const ComponentListRow& row) const;
 

@@ -47,6 +47,9 @@ public:
 	inline void setCursorToList() { mGrid.setCursorTo(mList); }
 	inline void setCursorToButtons() { assert(mButtonGrid); mGrid.setCursorTo(mButtonGrid); }
 
+	// Show or hide a row by index. Delegates to ComponentList.
+	inline void setRowVisible(int rowIndex, bool visible) { mList->setRowVisible(rowIndex, visible); updateSize(); }
+
 	virtual std::vector<HelpPrompt> getHelpPrompts() override;
 
 private:

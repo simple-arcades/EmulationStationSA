@@ -53,6 +53,13 @@ struct TrackDisplayInfo
 	TrackDisplayInfo() : valid(false) {}
 };
 
+// Radio station entry loaded from radio_stations.cfg.
+struct RadioStation
+{
+	std::string name;
+	std::string url;
+};
+
 class SimpleArcadesMusicManager
 {
 public:
@@ -69,7 +76,7 @@ public:
 	void setVolumePercent(int percent); // 0-100
 	int  getVolumePercent() const;
 
-	// mode: "shuffle_all" or "folder"
+	// mode: "shuffle_all", "folder", "radio", or "spotify"
 	void setMode(const std::string& mode);
 	std::string getMode() const;
 
@@ -79,6 +86,22 @@ public:
 
 	// Folder names under ~/simplearcades/media/music/soundtracks
 	std::vector<std::string> getAvailableFolders() const;
+
+	// --- Internet Radio ---
+
+	void loadRadioStations();
+	std::vector<RadioStation> getRadioStations() const;
+	int  getRadioStationIndex() const;
+	std::string getRadioStationName() const;
+	void setRadioStation(int index);
+
+	// --- Spotify Connect ---
+
+	static bool isSpotifyAvailable();
+	void startSpotifyService();
+	void stopSpotifyService();
+	void pauseSpotifyService();
+	void resumeSpotifyService();
 
 	// Track controls.
 	void nextTrack();
@@ -126,7 +149,15 @@ public:
 	// Returns the path to cover art for a soundtrack, or empty if not found.
 	std::string getCoverArtPath(const std::string& folderName) const;
 
-	// --- End Music v2 additions ---
+	// --- Music v3: Gameplay volume ---
+
+	void setPlayDuringGameplay(bool play);
+	bool getPlayDuringGameplay() const;
+
+	void setGameplayVolume(int percent); // 10-100
+	int  getGameplayVolume() const;
+
+	// --- End Music v3 additions ---
 
 	// Persist current config to ~/simplearcades/config/music/music.cfg
 	void saveConfig();
@@ -139,13 +170,15 @@ private:
 	SimpleArcadesMusicManager& operator=(const SimpleArcadesMusicManager&) = delete;
 
 	void threadMain();
-	void requestRebuildAndRestart(bool restartCurrent);
 	void rebuildPlaylistLocked();
 
 	// Shuffle allowlist helpers (caller must hold mMutex).
 	void loadShuffleAllowlistLocked();
 	void saveShuffleAllowlistLocked();
 	void syncShuffleAllowlistLocked(const std::vector<std::string>& allTracks);
+
+	// Radio station helpers (caller must hold mMutex).
+	void loadRadioStationsLocked();
 
 	mutable std::mutex              mMutex;
 	std::condition_variable         mCv;
@@ -177,6 +210,14 @@ private:
 
 	// Shuffle allowlist: relative path -> enabled.
 	std::map<std::string, bool>     mShuffleAllowlist;
+
+	// Radio stations.
+	std::vector<RadioStation>       mRadioStations;
+	int                             mRadioIndex;
+
+	// Gameplay volume.
+	bool                            mPlayDuringGameplay;
+	int                             mGameplayVolume;
 
 	std::thread                     mThread;
 };

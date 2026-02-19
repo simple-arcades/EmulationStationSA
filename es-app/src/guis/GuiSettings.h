@@ -16,6 +16,9 @@ public:
 	inline void addWithLabel(const std::string& label, const std::shared_ptr<GuiComponent>& comp) { mMenu.addWithLabel(label, comp); };
 	inline void addSaveFunc(const std::function<void()>& func) { mSaveFuncs.push_back(func); };
 
+	// Show or hide a row by index. Delegates to MenuComponent.
+	inline void setRowVisible(int rowIndex, bool visible) { mMenu.setRowVisible(rowIndex, visible); };
+
 	bool input(InputConfig* config, Input input) override;
 	std::vector<HelpPrompt> getHelpPrompts() override;
 	HelpStyle getHelpStyle() override;

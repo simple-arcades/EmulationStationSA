@@ -519,31 +519,65 @@ void GuiMenu::openDeleteControllerProfile()
 		window->pushGui(s);
 	}
 
-	void openSimpleArcadesMusicSettings(Window* window)
+void openSimpleArcadesMusicSettings(Window* window)
 	{
 		SimpleArcadesMusicManager::getInstance().init();
 
 		auto s = new GuiSettings(window, "MUSIC SETTINGS");
 
+		int rowIndex = 0;
+
 		// --- 1. Background Music on/off ---
 		const auto musicEnabled = std::make_shared<SwitchComponent>(window);
 		musicEnabled->setState(SimpleArcadesMusicManager::getInstance().isEnabled());
 		s->addWithLabel("BACKGROUND MUSIC", musicEnabled);
+		rowIndex++; // 0
 
 		// --- 2. Music Volume slider ---
 		auto musicVolume = std::make_shared<SliderComponent>(window, 0.f, 100.f, 1.f, "%");
 		musicVolume->setValue((float)SimpleArcadesMusicManager::getInstance().getVolumePercent());
 		s->addWithLabel("MUSIC VOLUME", musicVolume);
+		rowIndex++; // 1
 
-		// --- 3. Playlist Mode ---
+		// --- 3. Music Source (mode selector) ---
+		const std::string curMode = SimpleArcadesMusicManager::getInstance().getMode();
+
+		// Shared visibility updater — assigned after all rows are created.
+		auto visUpdater = std::make_shared<std::function<void()>>([](){});
+
+		auto mode = std::make_shared<OptionListComponent<std::string>>(window, "MUSIC SOURCE", false);
+		mode->add("Shuffle All", "shuffle_all", curMode == "shuffle_all");
+		mode->add("Single Soundtrack", "folder", curMode == "folder");
+		mode->add("Internet Radio", "radio", curMode == "radio");
+		if (SimpleArcadesMusicManager::isSpotifyAvailable())
+			mode->add("Spotify Connect", "spotify", curMode == "spotify");
+
+		// Build the mode row manually with an input_handler that calls
+		// updateVisibility after the OptionList processes left/right.
+		{
+			ComponentListRow modeRow;
+			modeRow.addElement(std::make_shared<TextComponent>(window, "MUSIC SOURCE", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+			modeRow.addElement(mode, false, true);
+			modeRow.input_handler = [mode, visUpdater](InputConfig* config, Input input) -> bool
+			{
+				if (input.value != 0 &&
+					(config->isMappedLike("left", input) || config->isMappedLike("right", input)))
+				{
+					// Let OptionList process the input.
+					mode->input(config, input);
+					// Now update visibility for the new selection.
+					if (*visUpdater)
+						(*visUpdater)();
+					return true;
+				}
+				return false;
+			};
+			s->addRow(modeRow);
+		}
+		const int rowMode = rowIndex++;  // 2
+
+		// --- 4. Soundtrack folder selector (visible: shuffle_all, folder) ---
 		auto folders = SimpleArcadesMusicManager::getInstance().getAvailableFolders();
-
-		auto mode = std::make_shared<OptionListComponent<std::string>>(window, "PLAYLIST MODE", false);
-		mode->add("Shuffle All", "shuffle_all", SimpleArcadesMusicManager::getInstance().getMode() != "folder");
-		mode->add("Single Soundtrack", "folder", SimpleArcadesMusicManager::getInstance().getMode() == "folder");
-		s->addWithLabel("PLAYLIST MODE", mode);
-
-		// --- 4. Soundtrack folder selector ---
 		auto folderOpt = std::make_shared<OptionListComponent<std::string>>(window, "SOUNDTRACK", false);
 		if (folders.empty())
 		{
@@ -564,18 +598,51 @@ void GuiMenu::openDeleteControllerProfile()
 			}
 		}
 		s->addWithLabel("SOUNDTRACK", folderOpt);
+		const int rowSoundtrack = rowIndex++; // 3
 
-		// --- 5. Show Track Popup toggle ---
+		// --- 5. Radio station selector (visible: radio mode only) ---
+		auto stations = SimpleArcadesMusicManager::getInstance().getRadioStations();
+		auto stationOpt = std::make_shared<OptionListComponent<int>>(window, "RADIO STATION", false);
+		if (stations.empty())
+		{
+			stationOpt->add("No stations found", 0, true);
+		}
+		else
+		{
+			const int curStation = SimpleArcadesMusicManager::getInstance().getRadioStationIndex();
+			for (int i = 0; i < static_cast<int>(stations.size()); ++i)
+			{
+				stationOpt->add(stations[i].name, i, i == curStation);
+			}
+		}
+		s->addWithLabel("RADIO STATION", stationOpt);
+		const int rowStation = rowIndex++; // 4
+
+		// --- 6. Show Track Popup toggle ---
 		const auto showPopup = std::make_shared<SwitchComponent>(window);
 		showPopup->setState(SimpleArcadesMusicManager::getInstance().getShowTrackPopup());
 		s->addWithLabel("SHOW TRACK POPUP", showPopup);
+		const int rowShowPopup = rowIndex++; // 5
 
-		// --- 6. Play During Screensaver toggle ---
+		// --- 7. Play During Screensaver toggle ---
 		const auto playDuringSS = std::make_shared<SwitchComponent>(window);
 		playDuringSS->setState(SimpleArcadesMusicManager::getInstance().getPlayDuringScreensaver());
 		s->addWithLabel("PLAY DURING SCREENSAVER", playDuringSS);
+		rowIndex++; // 6 (always visible)
 
-		// --- 7. Shuffle All Settings submenu ---
+		// --- 8. Play During Gameplay toggle ---
+		const auto playDuringGP = std::make_shared<SwitchComponent>(window);
+		playDuringGP->setState(SimpleArcadesMusicManager::getInstance().getPlayDuringGameplay());
+		s->addWithLabel("PLAY DURING GAMEPLAY", playDuringGP);
+		const int rowPlayDuringGP = rowIndex++; // 7
+
+		// --- 9. Gameplay Volume slider ---
+		auto gameplayVolume = std::make_shared<SliderComponent>(window, 10.f, 100.f, 5.f, "%");
+		gameplayVolume->setValue((float)SimpleArcadesMusicManager::getInstance().getGameplayVolume());
+		s->addWithLabel("GAMEPLAY VOLUME", gameplayVolume);
+		const int rowGameplayVol = rowIndex++; // 8
+
+		// --- 10. Shuffle All Settings submenu ---
 		ComponentListRow shuffleRow;
 		shuffleRow.makeAcceptInputHandler([window]
 		{
@@ -584,8 +651,9 @@ void GuiMenu::openDeleteControllerProfile()
 		shuffleRow.addElement(std::make_shared<TextComponent>(window,
 			"SHUFFLE ALL SETTINGS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 		s->addRow(shuffleRow);
+		const int rowShuffleSettings = rowIndex++; // 9
 
-		// --- 8. Rescan Music Now action ---
+		// --- 11. Rescan Music Now action ---
 		ComponentListRow rescanRow;
 		rescanRow.makeAcceptInputHandler([window]
 		{
@@ -595,31 +663,126 @@ void GuiMenu::openDeleteControllerProfile()
 		rescanRow.addElement(std::make_shared<TextComponent>(window,
 			"RESCAN MUSIC NOW", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 		s->addRow(rescanRow);
+		const int rowRescan = rowIndex++; // 10
 
-		// --- 9. Add Your Own Music (QR code viewer, hidden if no QR image) ---
-		const std::string qrPath = Utils::FileSystem::getHomePath() + "/simplearcades/media/images/qrcodes/qr_music_help.png";
-		if (Utils::FileSystem::exists(qrPath))
+		// --- 12. Add Your Own Music (QR code viewer, visible: local music modes) ---
+		const std::string qrMusicPath = Utils::FileSystem::getHomePath() + "/simplearcades/media/images/qrcodes/qr_music_help.png";
+		int rowAddMusic = -1;
+		if (Utils::FileSystem::exists(qrMusicPath))
 		{
 			ComponentListRow addMusicRow;
-			addMusicRow.makeAcceptInputHandler([window, qrPath]
+			addMusicRow.makeAcceptInputHandler([window, qrMusicPath]
 			{
-				window->pushGui(new GuiImagePopup(window, "ADD YOUR OWN MUSIC", qrPath, "SCAN TO ADD YOUR OWN MUSIC"));
+				window->pushGui(new GuiImagePopup(window, "ADD YOUR OWN MUSIC", qrMusicPath, "SCAN TO ADD YOUR OWN MUSIC"));
 			});
 			addMusicRow.addElement(std::make_shared<TextComponent>(window,
 				"ADD YOUR OWN MUSIC", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
 			s->addRow(addMusicRow);
+			rowAddMusic = rowIndex++; // 11
 		}
 
+		// --- 13. Add Your Own Radio Stations (QR code viewer, visible: radio mode) ---
+		const std::string qrRadioPath = Utils::FileSystem::getHomePath() + "/simplearcades/media/images/qrcodes/qr_radio_help.png";
+		int rowAddRadio = -1;
+		if (Utils::FileSystem::exists(qrRadioPath))
+		{
+			ComponentListRow addRadioRow;
+			addRadioRow.makeAcceptInputHandler([window, qrRadioPath]
+			{
+				window->pushGui(new GuiImagePopup(window, "ADD RADIO STATIONS", qrRadioPath, "SCAN TO ADD YOUR OWN RADIO STATIONS"));
+			});
+			addRadioRow.addElement(std::make_shared<TextComponent>(window,
+				"ADD RADIO STATIONS", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+			s->addRow(addRadioRow);
+			rowAddRadio = rowIndex++; // 12
+		}
+
+		// --- 14. Spotify Connect Help (visible: spotify mode only) ---
+		ComponentListRow spotifyHelpRow;
+		spotifyHelpRow.makeAcceptInputHandler([window]
+		{
+			window->pushGui(new GuiMsgBox(window,
+				"IMPORTANT: Your device must be on\n"
+				"the same WiFi network as this arcade.\n\n"
+				"1. Open the Spotify app. Play a song.\n"
+				"2. Tap the device icon at bottom of screen.\n"
+				"3. Select \"Simple Arcades\" from the list.\n"
+				"4. Use your phone to control playback.\n\n"
+				"(requires a Spotify Premium account)",
+				"GOT IT", nullptr));
+		});
+		spotifyHelpRow.addElement(std::make_shared<TextComponent>(window,
+			"HOW TO CONNECT", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+		s->addRow(spotifyHelpRow);
+		const int rowSpotifyHelp = rowIndex++;
+
+		// --- Context-sensitive row visibility ---
+		// Lambda to update row visibility based on current mode selection.
+		auto updateVisibility = [s, rowSoundtrack, rowStation, rowShowPopup,
+		                         rowPlayDuringGP, rowGameplayVol,
+		                         rowShuffleSettings, rowRescan, rowAddMusic,
+		                         rowAddRadio, rowSpotifyHelp, mode, playDuringGP]()
+		{
+			const std::string sel = mode->getSelected();
+			const bool isRadio    = (sel == "radio");
+			const bool isSpotify  = (sel == "spotify");
+			const bool isLocal    = (sel == "shuffle_all" || sel == "folder");
+			const bool isShuffle  = (sel == "shuffle_all");
+
+			// Soundtrack row: visible for shuffle_all and folder modes.
+			s->setRowVisible(rowSoundtrack, isLocal);
+
+			// Radio station: visible only in radio mode.
+			s->setRowVisible(rowStation, isRadio);
+
+			// Show track popup: not useful for spotify (user controls from phone).
+			s->setRowVisible(rowShowPopup, !isSpotify);
+
+			// Play during gameplay: available for local modes and radio; spotify always pauses.
+			s->setRowVisible(rowPlayDuringGP, !isSpotify);
+
+			// Gameplay volume: visible when play-during-gameplay is ON and not spotify.
+			s->setRowVisible(rowGameplayVol, !isSpotify && playDuringGP->getState());
+
+			// Shuffle settings: only for shuffle_all mode.
+			s->setRowVisible(rowShuffleSettings, isShuffle);
+
+			// Rescan: only for local music modes.
+			s->setRowVisible(rowRescan, isLocal);
+
+			// Add your own music: only for local music modes.
+			if (rowAddMusic >= 0)
+				s->setRowVisible(rowAddMusic, isLocal);
+
+			// Add radio stations: only for radio mode.
+			if (rowAddRadio >= 0)
+				s->setRowVisible(rowAddRadio, isRadio);
+
+			// Spotify help: only visible in spotify mode.
+			s->setRowVisible(rowSpotifyHelp, isSpotify);
+		};
+
+		// Set initial visibility.
+		updateVisibility();
+
+		// Assign to shared pointer so the mode row's input_handler can call it.
+		*visUpdater = updateVisibility;
+
 		// --- Save all settings on menu close ---
-		s->addSaveFunc([musicEnabled, musicVolume, mode, folderOpt, playDuringSS, showPopup]
+		s->addSaveFunc([musicEnabled, musicVolume, mode, folderOpt, stationOpt,
+		                playDuringSS, showPopup, playDuringGP, gameplayVolume,
+		                updateVisibility]
 		{
 			SimpleArcadesMusicManager::getInstance().init();
 
-		SimpleArcadesMusicManager::getInstance().setVolumePercent((int)musicVolume->getValue());
+			SimpleArcadesMusicManager::getInstance().setVolumePercent((int)musicVolume->getValue());
 			SimpleArcadesMusicManager::getInstance().setMode(mode->getSelected());
 			SimpleArcadesMusicManager::getInstance().setFolder(folderOpt->getSelected());
+			SimpleArcadesMusicManager::getInstance().setRadioStation(stationOpt->getSelected());
 			SimpleArcadesMusicManager::getInstance().setPlayDuringScreensaver(playDuringSS->getState());
 			SimpleArcadesMusicManager::getInstance().setShowTrackPopup(showPopup->getState());
+			SimpleArcadesMusicManager::getInstance().setPlayDuringGameplay(playDuringGP->getState());
+			SimpleArcadesMusicManager::getInstance().setGameplayVolume((int)gameplayVolume->getValue());
 			SimpleArcadesMusicManager::getInstance().setEnabled(musicEnabled->getState());
 
 			SimpleArcadesMusicManager::getInstance().saveConfig();
@@ -1314,7 +1477,7 @@ void GuiMenu::openHowToVideos()
 			// Show a popup with PLAY/BACK options. PLAY launches the video.
 			window->pushGui(new GuiMsgBox(window,
 				"Once the video starts playing,\n"
-				"hold START for 1 second to exit.",
+				"hold ANY BUTTON for 1 second to exit.",
 				"PLAY", [window, videoPath]
 				{
 					LOG(LogInfo) << "GuiMenu: Playing how-to video: " << videoPath;

@@ -99,6 +99,18 @@ bool Window::init()
 	if(peekGui())
 		peekGui()->updateHelpPrompts();
 
+	// Restore visibility for all GUI elements after reinitialisation.
+	// deinit() calls onHide() on every element in the stack, which sets
+	// VideoComponent::mShowing = false. Without this matching onShow(),
+	// video snaps (and any other show/hide-dependent component) will
+	// remain permanently hidden after a deinit/init cycle such as
+	// launching an external script, playing a how-to video, or running
+	// the control tester.
+	for(auto i = mGuiStack.cbegin(); i != mGuiStack.cend(); i++)
+	{
+		(*i)->onShow();
+	}
+
 	return true;
 }
 
