@@ -1,5 +1,6 @@
 #include "SystemScreenSaver.h"
 #include "SimpleArcadesScreensaverUtil.h"
+#include "AudioManager.h"
 #include "components/TextListComponent.h"
 
 #ifdef _OMX_
@@ -41,7 +42,9 @@ SystemScreenSaver::SystemScreenSaver(Window* window) :
 	mCurrentGame(NULL),
 	mPreviousGame(NULL),
 	mStopBackgroundAudio(true),
-	mSystem(NULL)
+	mSystem(NULL),
+	mThread(nullptr),
+	mExit(false)
 {
 	remove(getTitlePath().c_str());
 	mWindow->setScreenSaver(this);
@@ -225,6 +228,15 @@ void SystemScreenSaver::startScreenSaver(SystemData* system)
 	// if set to index files in background, start thread
 	if (Settings::getInstance()->getBool("BackgroundIndexing"))
 	{
+		// Guard: join any previous thread before starting a new one
+		if (mThread)
+		{
+			mExit = true;
+			mThread->join();
+			delete mThread;
+			mThread = nullptr;
+		}
+
 		mExit = false;
 		mThread = new std::thread(&SystemScreenSaver::backgroundIndexing, this);
 	}
@@ -337,6 +349,9 @@ void SystemScreenSaver::startScreenSaver(SystemData* system)
 	// No videos. Just use a standard screensaver
 	mState = STATE_SCREENSAVER_ACTIVE;
 	mCurrentGame = NULL;
+
+	// Notify music manager that screensaver started (may pause music).
+	SimpleArcadesMusicManager::getInstance().onScreenSaverStarted();
 }
 
 void SystemScreenSaver::stopScreenSaver(bool toResume)
@@ -382,6 +397,9 @@ void SystemScreenSaver::stopScreenSaver(bool toResume)
 	mState = STATE_INACTIVE;
 	handleScreenSaverEditingCollection();
 	PowerSaver::runningScreenSaver(false);
+
+	// Notify music manager that screensaver stopped (may resume music).
+	SimpleArcadesMusicManager::getInstance().onScreenSaverStopped();
 }
 
 void SystemScreenSaver::renderScreenSaver()

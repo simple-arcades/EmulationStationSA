@@ -237,6 +237,20 @@ public:
 		assert(mMultiSelect == false);
 		auto selected = getSelectedObjects();
 		assert(selected.size() == 1);
+
+		// Safety guard: if nothing is selected (e.g. saved value no longer
+		// exists in the list), fall back to the first entry rather than
+		// crashing with std::out_of_range.
+		if (selected.empty())
+		{
+			if (!mEntries.empty())
+			{
+				mEntries.front().selected = true;
+				return mEntries.front().object;
+			}
+			return T();
+		}
+
 		return selected.at(0);
 	}
 
