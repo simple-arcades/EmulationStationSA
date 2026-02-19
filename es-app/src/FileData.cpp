@@ -41,7 +41,7 @@ FileData::~FileData()
 std::string FileData::getDisplayName() const
 {
 	std::string stem = Utils::FileSystem::getStem(mPath);
-	if(mSystem && mSystem->hasPlatformId(PlatformIds::ARCADE) || mSystem->hasPlatformId(PlatformIds::NEOGEO))
+	if(mSystem && (mSystem->hasPlatformId(PlatformIds::ARCADE) || mSystem->hasPlatformId(PlatformIds::NEOGEO)))
 		stem = MameNames::getInstance()->getRealName(stem);
 
 	return stem;

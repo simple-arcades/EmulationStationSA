@@ -57,7 +57,6 @@ private:
 	void openNetplaySettings();
 	void openShowHideSystems();
 	void openSoundSettings();
-	void openUISettings();
 
 	MenuComponent mMenu;
 	TextComponent mVersion;

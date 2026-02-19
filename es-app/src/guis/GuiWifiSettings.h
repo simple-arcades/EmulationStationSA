@@ -49,6 +49,7 @@ private:
 	std::string getSignalPercent(int level);
 
 	std::string runCommand(const std::string& cmd);
+	std::string shellEscape(const std::string& input);
 	std::vector<NetworkInfo> parseScanResults(const std::string& output);
 	ConnectionStatus parseStatus(const std::string& output);
 	bool wpaConnect(const std::string& ssid, const std::string& psk, bool hidden = false);

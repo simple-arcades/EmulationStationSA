@@ -631,12 +631,6 @@ void GuiGamelistOptions::deleteSaveState()
 }
 
 // ============================================================================
-//  openSavedGames
-//
-//  Opens the GuiSavedGames dialog showing all save states for the
-//  currently selected ROM.
-// ============================================================================
-// ============================================================================
 //  openPlayOnline
 //
 //  Shows HOST THIS GAME / FIND A MATCH submenu.
@@ -725,6 +719,12 @@ void GuiGamelistOptions::openPlayOnline()
 		"CANCEL", nullptr));
 }
 
+// ============================================================================
+//  openSavedGames
+//
+//  Opens the GuiSavedGames dialog showing all save states for the
+//  currently selected ROM.
+// ============================================================================
 void GuiGamelistOptions::openSavedGames()
 {
 	// Capture what we need before deleting this menu

@@ -344,6 +344,22 @@ std::string GuiWifiSettings::runCommand(const std::string& cmd)
 	return result;
 }
 
+std::string GuiWifiSettings::shellEscape(const std::string& input)
+{
+	// Escape for use inside single quotes in shell commands.
+	// Replace ' with '\'' (end quote, escaped quote, start quote)
+	std::string result;
+	result.reserve(input.size() + 8);
+	for (char c : input)
+	{
+		if (c == '\'')
+			result += "'\\''";
+		else
+			result += c;
+	}
+	return result;
+}
+
 std::vector<GuiWifiSettings::NetworkInfo> GuiWifiSettings::parseScanResults(const std::string& output)
 {
 	std::vector<NetworkInfo> results;
@@ -442,7 +458,8 @@ bool GuiWifiSettings::wpaConnect(const std::string& ssid, const std::string& psk
 
 	if (idStr.empty() || idStr == "FAIL") return false;
 
-	std::string setResult = runCommand("sudo wpa_cli -i wlan0 set_network " + idStr + " ssid '\"" + ssid + "\"'");
+	std::string safeSsid = shellEscape(ssid);
+	std::string setResult = runCommand("sudo wpa_cli -i wlan0 set_network " + idStr + " ssid '\"" + safeSsid + "\"'");
 	if (setResult.find("FAIL") != std::string::npos) return false;
 
 	if (hidden)
@@ -450,7 +467,8 @@ bool GuiWifiSettings::wpaConnect(const std::string& ssid, const std::string& psk
 
 	if (!psk.empty())
 	{
-		setResult = runCommand("sudo wpa_cli -i wlan0 set_network " + idStr + " psk '\"" + psk + "\"'");
+		std::string safePsk = shellEscape(psk);
+		setResult = runCommand("sudo wpa_cli -i wlan0 set_network " + idStr + " psk '\"" + safePsk + "\"'");
 		if (setResult.find("FAIL") != std::string::npos) return false;
 	}
 	else

@@ -130,7 +130,8 @@ void GuiNetplayLan::discoverAndBuild()
 	                  + std::to_string(getLanDiscoveryPort()) + " "
 	                  + std::to_string(listenSec) + " \""
 	                  + outputPath + "\" 2>/dev/null";
-
+	
+	mWindow->renderLoadingScreen("SEARCHING FOR LAN GAMES...");
 	LOG(LogInfo) << "NetplayLan: Listening for " << listenSec << " seconds...";
 	int rc = ::system(cmd.c_str());
 

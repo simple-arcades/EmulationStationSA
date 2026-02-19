@@ -6,7 +6,8 @@
 #include "resources/Font.h"
 
 GuiImageViewer::GuiImageViewer(Window* window, const std::string& imagePath, const std::string& title)
-	: GuiComponent(window), mImage(window), mTitle(title)
+	: GuiComponent(window), mImage(window), mTitle(title),
+	  mTitleX(0), mTitleY(0), mHintX(0), mHintY(0)
 {
 	setSize((float)Renderer::getScreenWidth(), (float)Renderer::getScreenHeight());
 
@@ -24,6 +25,28 @@ GuiImageViewer::GuiImageViewer(Window* window, const std::string& imagePath, con
 	const float imgX = (Renderer::getScreenWidth() - mImage.getSize().x()) * 0.5f;
 	const float imgY = titleOffset + (Renderer::getScreenHeight() - titleOffset - mImage.getSize().y()) * 0.5f;
 	mImage.setPosition(imgX, imgY);
+
+	// Pre-build title text cache (built once, rendered every frame)
+	if (!mTitle.empty())
+	{
+		mTitleFont = saFont(FONT_SIZE_MEDIUM);
+		const float textW = mTitleFont->sizeText(mTitle).x();
+		mTitleX = (Renderer::getScreenWidth() - textW) * 0.5f;
+		mTitleY = Renderer::getScreenHeight() * 0.03f;
+		mTitleCache = std::unique_ptr<TextCache>(
+			mTitleFont->buildTextCache(mTitle, 0.0f, 0.0f, 0xFFFFFFFF));
+	}
+
+	// Pre-build hint text cache
+	{
+		mHintFont = saFont(FONT_SIZE_SMALL);
+		const std::string hint = "PRESS BACK TO CLOSE";
+		const float hintW = mHintFont->sizeText(hint).x();
+		mHintX = (Renderer::getScreenWidth() - hintW) * 0.5f;
+		mHintY = Renderer::getScreenHeight() * 0.93f;
+		mHintCache = std::unique_ptr<TextCache>(
+			mHintFont->buildTextCache(hint, 0.0f, 0.0f, SA_SCRAPER_SUBTITLE_COLOR));
+	}
 }
 
 GuiImageViewer::~GuiImageViewer()
@@ -57,38 +80,24 @@ void GuiImageViewer::render(const Transform4x4f& parentTrans)
 		0x000000E0, 0x000000E0);
 
 	// Title text at top center if provided.
-	if (!mTitle.empty())
+	if (mTitleCache)
 	{
-		auto font = saFont(FONT_SIZE_MEDIUM);
-		const float textW = font->sizeText(mTitle).x();
-		const float textX = (Renderer::getScreenWidth() - textW) * 0.5f;
-		const float textY = Renderer::getScreenHeight() * 0.03f;
-
 		Transform4x4f textTrans = trans;
-		textTrans.translate(Vector3f(textX, textY, 0.0f));
+		textTrans.translate(Vector3f(mTitleX, mTitleY, 0.0f));
 		Renderer::setMatrix(textTrans);
-		TextCache* cache = font->buildTextCache(mTitle, 0.0f, 0.0f, 0xFFFFFFFF);
-		font->renderTextCache(cache);
-		delete cache;
+		mTitleFont->renderTextCache(mTitleCache.get());
 	}
 
 	// Render the image.
 	mImage.render(trans);
 
 	// "PRESS BACK TO CLOSE" centered below the image.
+	if (mHintCache)
 	{
-		auto font = saFont(FONT_SIZE_SMALL);
-		const std::string hint = "PRESS BACK TO CLOSE";
-		const float hintW = font->sizeText(hint).x();
-		const float hintX = (Renderer::getScreenWidth() - hintW) * 0.5f;
-		const float hintY = Renderer::getScreenHeight() * 0.93f;
-
 		Transform4x4f hintTrans = trans;
-		hintTrans.translate(Vector3f(hintX, hintY, 0.0f));
+		hintTrans.translate(Vector3f(mHintX, mHintY, 0.0f));
 		Renderer::setMatrix(hintTrans);
-		TextCache* hintCache = font->buildTextCache(hint, 0.0f, 0.0f, SA_SCRAPER_SUBTITLE_COLOR);
-		font->renderTextCache(hintCache);
-		delete hintCache;
+		mHintFont->renderTextCache(mHintCache.get());
 	}
 }
 

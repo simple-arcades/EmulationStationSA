@@ -2,34 +2,19 @@
 
 #include "Log.h"
 #include "utils/FileSystemUtil.h"
+#include "utils/StringUtil.h"
 
 #include <cstdio>
 #include <algorithm>
-#include <cctype>
 #include <fstream>
 #include <set>
 #include <cstdlib>
 #include <sstream>
 
-static std::string trim(const std::string& s)
-{
-	size_t a = 0;
-	while (a < s.size() && std::isspace((unsigned char)s[a])) a++;
-	size_t b = s.size();
-	while (b > a && std::isspace((unsigned char)s[b - 1])) b--;
-	return s.substr(a, b - a);
-}
-
-static std::string toLower(std::string s)
-{
-	for (char& c : s) c = (char)std::tolower((unsigned char)c);
-	return s;
-}
-
 static bool isLikelyVideoFile(const std::string& path)
 {
 	std::string ext = Utils::FileSystem::getExtension(path);
-	ext = toLower(ext);
+	ext = Utils::String::toLower(ext);
 	// Keep this conservative; you can add more later if needed.
 	return (ext == ".mp4" || ext == ".m4v" || ext == ".mkv" || ext == ".avi" || ext == ".mov" || ext == ".webm");
 }
@@ -151,7 +136,7 @@ static std::string getConfigReadPath()
 static bool hasVideoExtension(const std::string& rel)
 {
 	std::string ext = Utils::FileSystem::getExtension(rel);
-	std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+	ext = Utils::String::toLower(ext);
 
 	// Keep this list aligned with scanAllVideosRelative()
 	return (ext == ".mp4" || ext == ".m4v" || ext == ".mkv" || ext == ".avi" ||
@@ -160,7 +145,7 @@ static bool hasVideoExtension(const std::string& rel)
 
 static std::string normalizeRel(std::string rel)
 {
-	rel = trim(rel);
+	rel = Utils::String::trim(rel);
 	for (auto& c : rel)
 		if (c == '\\') c = '/';
 
@@ -193,7 +178,7 @@ static std::unordered_map<std::string, bool> loadSelectionFile(const std::string
 	std::string line;
 	while (std::getline(in, line))
 	{
-		line = trim(line);
+		line = Utils::String::trim(line);
 		if (line.empty())
 			continue;
 
@@ -202,7 +187,7 @@ static std::unordered_map<std::string, bool> loadSelectionFile(const std::string
 		{
 			enabled = false;
 			line.erase(0, 1);
-			line = trim(line);
+			line = Utils::String::trim(line);
 			if (line.empty())
 				continue;
 		}
