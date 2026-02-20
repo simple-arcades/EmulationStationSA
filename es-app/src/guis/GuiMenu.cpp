@@ -613,7 +613,8 @@ void openSimpleArcadesMusicSettings(Window* window)
 		const int rowPlayDuringGP = rowIndex++; // 7
 
 		// --- 9. Gameplay Volume slider ---
-		auto gameplayVolume = std::make_shared<SliderComponent>(window, 10.f, 100.f, 5.f, "%");
+		auto gameplayVolume = std::make_shared<SliderComponent>(window, 0.f, 100.f, 1.f, "%");
+		gameplayVolume->setFloor(10.f);
 		gameplayVolume->setValue((float)SimpleArcadesMusicManager::getInstance().getGameplayVolume());
 		s->addWithLabel("GAMEPLAY VOLUME", gameplayVolume);
 		const int rowGameplayVol = rowIndex++; // 8
@@ -959,6 +960,25 @@ void GuiMenu::openOnlinePlay()
 	});
 	s->addRow(howRow);
 
+	// ABOUT ONLINE PLAY
+	ComponentListRow aboutRow;
+	aboutRow.addElement(std::make_shared<TextComponent>(mWindow,
+		"ABOUT ONLINE PLAY", saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR), true);
+	aboutRow.addElement(makeArrow(mWindow), false);
+	aboutRow.makeAcceptInputHandler([window] {
+		std::string text =
+			"Online play uses RetroArch's netplay network,\n"
+			"connecting thousands of players on different\n"
+			"hardware and setups. Not all sessions will\n"
+			"connect successfully due to these differences.\n"
+			"If a session won't connect, try another\n"
+			"or host your own game.";
+
+		window->pushGui(new GuiMsgBox(window, text, "CLOSE", nullptr,
+			"", nullptr, "", nullptr, saFont(FONT_SIZE_INFO)));
+	});
+	s->addRow(aboutRow);
+
 	// SETTINGS (netplay config)
 	ComponentListRow settingsRow;
 	settingsRow.addElement(std::make_shared<TextComponent>(mWindow,
@@ -1235,7 +1255,7 @@ void GuiMenu::openUserInterfaceSettings()
 
 		auto splashSwitch = std::make_shared<SwitchComponent>(window);
 		splashSwitch->setState(splashEnabled);
-		s->addWithLabel("BOOT SPLASH VIDEO", splashSwitch);
+		s->addWithLabel("SHOW STARTUP VIDEO", splashSwitch);
 
 		s->addSaveFunc([splashSwitch, splashEnabled]
 		{

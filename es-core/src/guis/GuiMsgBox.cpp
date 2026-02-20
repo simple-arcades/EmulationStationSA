@@ -9,13 +9,15 @@
 GuiMsgBox::GuiMsgBox(Window* window, const std::string& text,
 	const std::string& name1, const std::function<void()>& func1,
 	const std::string& name2, const std::function<void()>& func2,
-	const std::string& name3, const std::function<void()>& func3) : GuiComponent(window),
+	const std::string& name3, const std::function<void()>& func3,
+	const std::shared_ptr<Font>& font) : GuiComponent(window),
 	mBackground(window, ":/frame.png"), mGrid(window, Vector2i(1, 2))
 {
 	float width = Renderer::getScreenWidth() * 0.6f; // max width
 	float minWidth = Renderer::getScreenWidth() * 0.3f; // minimum width
 
-	mMsg = std::make_shared<TextComponent>(mWindow, text, saFont(FONT_SIZE_MEDIUM), SA_TEXT_COLOR, ALIGN_CENTER);
+	auto msgFont = font ? font : saFont(FONT_SIZE_MEDIUM);
+	mMsg = std::make_shared<TextComponent>(mWindow, text, msgFont, SA_TEXT_COLOR, ALIGN_CENTER);
 	mGrid.setEntry(mMsg, Vector2i(0, 0), false, false);
 
 	// create the buttons

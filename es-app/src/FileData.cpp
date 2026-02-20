@@ -299,6 +299,9 @@ void FileData::launchGame(Window* window)
 	SimpleArcadesMusicManager::getInstance().onGameLaunched();
 	Scripting::fireEvent("game-start", rom, basename, name);
 
+	// Launch video has finished — start gameplay music if enabled.
+	SimpleArcadesMusicManager::getInstance().startGameplayMusic();
+
 	LOG(LogInfo) << "	" << command;
 	int exitCode = runSystemCommand(command);
 
@@ -307,8 +310,13 @@ void FileData::launchGame(Window* window)
 		LOG(LogWarning) << "...launch terminated with nonzero exit code " << exitCode << "!";
 	}
 
-	SimpleArcadesMusicManager::getInstance().onGameReturned();
+	// Game exited — stop gameplay music before exit video.
+	SimpleArcadesMusicManager::getInstance().stopGameplayMusic();
+
 	Scripting::fireEvent("game-end");
+
+	// Exit video has finished — now restore normal music.
+	SimpleArcadesMusicManager::getInstance().onGameReturned();
 
 	window->init();
 	InputManager::getInstance()->init();

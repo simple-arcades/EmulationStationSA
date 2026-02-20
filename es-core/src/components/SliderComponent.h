@@ -17,6 +17,7 @@ public:
 
 	void setValue(float val);
 	float getValue();
+	void setFloor(float floor);  // optional: lowest allowed value (knob stops here)
 
 	bool input(InputConfig* config, Input input) override;
 	void update(int deltaTime) override;
@@ -31,6 +32,7 @@ private:
 
 	float mMin, mMax;
 	float mValue;
+	float mFloor;  // effective minimum (defaults to mMin)
 	float mSingleIncrement;
 	float mMoveRate;
 	int mMoveAccumulator;

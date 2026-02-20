@@ -295,16 +295,44 @@ namespace
 		return v;
 	}
 
-	static void saKillMusicPid(pid_t pid)
+	static void saKillMusicPid(pid_t pid, bool isRadio = false)
 	{
 		if (pid <= 0)
 			return;
 
-		// Resume first in case it was suspended (SIGSTOP).
-		// Sending SIGCONT to a non-stopped process is harmless.
+		if (isRadio)
+		{
+			// Radio streams: SIGSTOP first to halt audio output,
+			// brief delay for VCHI buffers to drain, then SIGTERM.
+			// This avoids the Pi 4 firmware deadlock caused by
+			// abruptly closing an active bcm2835_audio VCHI channel.
+			kill(pid, SIGSTOP);
+			usleep(300000);  // 300ms
+			kill(pid, SIGCONT);
+			kill(pid, SIGTERM);
+		}
+		else
+		{
+			// Local files: simple resume + terminate.
+			kill(pid, SIGCONT);
+			kill(pid, SIGTERM);
+		}
+	}
+
+	// Suspend mpg123 instead of killing it.
+	static void saSuspendMusicPid(pid_t pid)
+	{
+		if (pid <= 0)
+			return;
+		kill(pid, SIGSTOP);
+	}
+
+	// Resume a suspended mpg123 process.
+	static void saResumeMusicPid(pid_t pid)
+	{
+		if (pid <= 0)
+			return;
 		kill(pid, SIGCONT);
-		kill(pid, SIGTERM);
-		kill(pid, SIGKILL);
 	}
 
 	static pid_t saSpawnMpg123(const std::string& filePath, int volumePercent)
@@ -333,6 +361,7 @@ namespace
 			char* const args[] = {
 				(char*)"mpg123",
 				(char*)"-q",
+				(char*)"--timeout", (char*)"10",
 				(char*)"-f",
 				(char*)scaleStr.c_str(),
 				(char*)filePath.c_str(),
@@ -526,6 +555,7 @@ SimpleArcadesMusicManager::SimpleArcadesMusicManager()
 	, mMode("shuffle_all")
 	, mFolder("")
 	, mPausedForGame(false)
+	, mInGameplay(false)
 	, mPausedForScreensaver(false)
 	, mPlayDuringScreensaver(true)
 	, mShowTrackPopup(true)
@@ -534,6 +564,7 @@ SimpleArcadesMusicManager::SimpleArcadesMusicManager()
 	, mAdvanceRequested(0)
 	, mIndex(0)
 	, mPid(-1)
+	, mIsRadioProcess(false)
 	, mNewTrackFlag(false)
 	, mRadioIndex(0)
 	, mPlayDuringGameplay(false)
@@ -605,7 +636,7 @@ void SimpleArcadesMusicManager::shutdown()
 		mStopThread = true;
 
 		if (mPid > 0)
-			saKillMusicPid(static_cast<pid_t>(mPid));
+			saKillMusicPid(static_cast<pid_t>(mPid), mIsRadioProcess);
 
 		mCv.notify_all();
 	}
@@ -634,6 +665,7 @@ bool SimpleArcadesMusicManager::isEnabled() const
 void SimpleArcadesMusicManager::setEnabled(bool enabled)
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
 	bool startSpotify = false;
 	bool stopSpotify = false;
 
@@ -646,6 +678,7 @@ void SimpleArcadesMusicManager::setEnabled(bool enabled)
 
 		mEnabled = enabled;
 		mPausedForGame = false;
+		mInGameplay = false;
 		mPausedForScreensaver = false;
 
 		if (!mEnabled)
@@ -653,7 +686,7 @@ void SimpleArcadesMusicManager::setEnabled(bool enabled)
 			if (mMode == "spotify")
 				stopSpotify = true;
 			else if (mPid > 0)
-				pidToKill = static_cast<pid_t>(mPid);
+				{ pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess; }
 		}
 		else
 		{
@@ -671,7 +704,7 @@ void SimpleArcadesMusicManager::setEnabled(bool enabled)
 	}
 
 	if (pidToKill > 0)
-		saKillMusicPid(pidToKill);
+		saKillMusicPid(pidToKill, killIsRadio);
 	if (startSpotify)
 		startSpotifyService();
 	if (stopSpotify)
@@ -687,6 +720,7 @@ int SimpleArcadesMusicManager::getVolumePercent() const
 void SimpleArcadesMusicManager::setVolumePercent(int percent)
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
@@ -702,14 +736,14 @@ void SimpleArcadesMusicManager::setVolumePercent(int percent)
 		if (mEnabled && !mPausedForGame && !mPausedForScreensaver && mPid > 0)
 		{
 			mRestartRequested = true;
-			pidToKill = static_cast<pid_t>(mPid);
+			pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess;
 		}
 
 		mCv.notify_all();
 	}
 
 	if (pidToKill > 0)
-		saKillMusicPid(pidToKill);
+		saKillMusicPid(pidToKill, killIsRadio);
 }
 
 std::string SimpleArcadesMusicManager::getMode() const
@@ -721,6 +755,8 @@ std::string SimpleArcadesMusicManager::getMode() const
 void SimpleArcadesMusicManager::setMode(const std::string& mode)
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
+	pid_t pidToSuspend = -1;
 	bool startSpotify = false;
 	bool stopSpotify = false;
 
@@ -741,7 +777,12 @@ void SimpleArcadesMusicManager::setMode(const std::string& mode)
 			if (oldMode == "spotify")
 				stopSpotify = true;
 			else if (mPid > 0)
-				pidToKill = static_cast<pid_t>(mPid);
+			{
+				if (oldMode == "radio")
+					pidToSuspend = static_cast<pid_t>(mPid);  // SIGSTOP: avoid VCHI deadlock
+				else
+					{ pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess; }
+			}
 
 			// Start new mode.
 			if (newMode == "spotify")
@@ -756,8 +797,10 @@ void SimpleArcadesMusicManager::setMode(const std::string& mode)
 		mCv.notify_all();
 	}
 
-	if (pidToKill > 0)
-		saKillMusicPid(pidToKill);
+	if (pidToSuspend > 0)
+		saKillMusicPid(pidToSuspend, true);
+	else if (pidToKill > 0)
+		saKillMusicPid(pidToKill, killIsRadio);
 	if (stopSpotify)
 		stopSpotifyService();
 	if (startSpotify)
@@ -773,6 +816,7 @@ std::string SimpleArcadesMusicManager::getFolder() const
 void SimpleArcadesMusicManager::setFolder(const std::string& folderName)
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
@@ -789,14 +833,14 @@ void SimpleArcadesMusicManager::setFolder(const std::string& folderName)
 			mRestartRequested = false;
 
 			if (mPid > 0)
-				pidToKill = static_cast<pid_t>(mPid);
+				{ pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess; }
 		}
 
 		mCv.notify_all();
 	}
 
 	if (pidToKill > 0)
-		saKillMusicPid(pidToKill);
+		saKillMusicPid(pidToKill, killIsRadio);
 }
 
 std::vector<std::string> SimpleArcadesMusicManager::getAvailableFolders() const
@@ -836,6 +880,7 @@ std::string SimpleArcadesMusicManager::getRadioStationName() const
 void SimpleArcadesMusicManager::setRadioStation(int index)
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
 		if (mRadioStations.empty()) return;
@@ -845,11 +890,11 @@ void SimpleArcadesMusicManager::setRadioStation(int index)
 		if (mMode == "radio" && mEnabled && !mPausedForGame && !mPausedForScreensaver)
 		{
 			mRebuildRequested = true;
-			if (mPid > 0) pidToKill = static_cast<pid_t>(mPid);
+			if (mPid > 0) { pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess; }
 		}
 		mCv.notify_all();
 	}
-	if (pidToKill > 0) saKillMusicPid(pidToKill);
+	if (pidToKill > 0) saKillMusicPid(pidToKill, killIsRadio);
 }
 
 void SimpleArcadesMusicManager::loadRadioStationsLocked()
@@ -948,42 +993,71 @@ int SimpleArcadesMusicManager::getGameplayVolume() const
 void SimpleArcadesMusicManager::nextTrack()
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
 		if (!mEnabled || mPausedForGame || mPausedForScreensaver || mPid <= 0 || mPlaylist.empty())
 			return;
 
+		// For radio: set popup info NOW (while old stream is still active)
+		// so the popup renders before the audio device transitions.
+		if (mMode == "radio" && !mRadioStations.empty())
+		{
+			int nextIdx = saClamp(mIndex + 1, 0, static_cast<int>(mPlaylist.size()) - 1);
+			if (nextIdx >= static_cast<int>(mPlaylist.size())) nextIdx = 0;
+			int ri = saClamp(nextIdx, 0, static_cast<int>(mRadioStations.size()) - 1);
+			mNewTrackSoundtrack = "Internet Radio";
+			mNewTrackName       = mRadioStations[ri].name;
+			mNewTrackCoverPath  = saFindRadioCoverArt(mRadioStations[ri].name);
+			mNewTrackFlag       = true;
+		}
+
 		mAdvanceRequested = +1;
-		pidToKill = static_cast<pid_t>(mPid);
+		pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess;
 		mCv.notify_all();
 	}
 
 	if (pidToKill > 0)
-		saKillMusicPid(pidToKill);
+		saKillMusicPid(pidToKill, killIsRadio);
 }
 
 void SimpleArcadesMusicManager::prevTrack()
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
 		if (!mEnabled || mPausedForGame || mPausedForScreensaver || mPid <= 0 || mPlaylist.empty())
 			return;
 
+		// For radio: set popup info NOW (while old stream is still active).
+		if (mMode == "radio" && !mRadioStations.empty())
+		{
+			int prevIdx = mIndex - 1;
+			if (prevIdx < 0) prevIdx = static_cast<int>(mPlaylist.size()) - 1;
+			int ri = saClamp(prevIdx, 0, static_cast<int>(mRadioStations.size()) - 1);
+			mNewTrackSoundtrack = "Internet Radio";
+			mNewTrackName       = mRadioStations[ri].name;
+			mNewTrackCoverPath  = saFindRadioCoverArt(mRadioStations[ri].name);
+			mNewTrackFlag       = true;
+		}
+
 		mAdvanceRequested = -1;
-		pidToKill = static_cast<pid_t>(mPid);
+		pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess;
 		mCv.notify_all();
 	}
 
 	if (pidToKill > 0)
-		saKillMusicPid(pidToKill);
+		saKillMusicPid(pidToKill, killIsRadio);
 }
 
 void SimpleArcadesMusicManager::onGameLaunched()
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
+	pid_t pidToSuspend = -1;
 	bool isSpotify = false;
 
 	{
@@ -992,25 +1066,102 @@ void SimpleArcadesMusicManager::onGameLaunched()
 			return;
 
 		isSpotify = (mMode == "spotify");
+		mInGameplay = true;
+
+		// Always stop music here — the launch video needs the audio device.
 		mPausedForGame = true;
 		mAdvanceRequested = 0;
 		mRestartRequested = false;
 
 		if (mPid > 0)
-			pidToKill = static_cast<pid_t>(mPid);
+		{
+			if (mMode == "radio")
+				pidToSuspend = static_cast<pid_t>(mPid);  // SIGSTOP: avoid VCHI deadlock
+			else
+				{ pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess; }
+		}
 
 		mCv.notify_all();
 	}
 
 	if (isSpotify)
 		pauseSpotifyService();
+	else if (pidToSuspend > 0)
+		saSuspendMusicPid(pidToSuspend);
 	else if (pidToKill > 0)
-		saKillMusicPid(pidToKill);
+		saKillMusicPid(pidToKill, killIsRadio);
+}
+
+void SimpleArcadesMusicManager::startGameplayMusic()
+{
+	pid_t pidToKill = -1;
+	bool killIsRadio = false;
+
+	{
+		std::lock_guard<std::mutex> lock(mMutex);
+		if (!mEnabled || !mPlayDuringGameplay || !mInGameplay)
+			return;
+		if (mMode == "spotify")
+			return; // TODO: spotify gameplay volume not yet supported
+
+		// Kill any suspended radio process — the game has taken over
+		// the audio device, so it's safe to close the stream now.
+		if (mPid > 0 && mMode == "radio")
+			{ pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess; }
+
+		// Unpause and let the thread respawn at gameplay volume.
+		mPausedForGame = false;
+		mRestartRequested = true;
+		mAdvanceRequested = 0;
+		mCv.notify_all();
+	}
+
+	if (pidToKill > 0)
+		saKillMusicPid(pidToKill, killIsRadio);
+}
+
+void SimpleArcadesMusicManager::stopGameplayMusic()
+{
+	pid_t pidToKill = -1;
+	bool killIsRadio = false;
+	pid_t pidToSuspend = -1;
+
+	{
+		std::lock_guard<std::mutex> lock(mMutex);
+		if (!mEnabled || !mInGameplay)
+			return;
+		if (mMode == "spotify")
+			return;
+
+		// Pause music before the exit video plays.
+		mPausedForGame = true;
+		mAdvanceRequested = 0;
+		mRestartRequested = false;
+
+		if (mPid > 0)
+		{
+			if (mMode == "radio")
+				pidToSuspend = static_cast<pid_t>(mPid);
+			else
+				{ pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess; }
+		}
+
+		mCv.notify_all();
+	}
+
+	if (pidToSuspend > 0)
+		saSuspendMusicPid(pidToSuspend);
+	else if (pidToKill > 0)
+		saKillMusicPid(pidToKill, killIsRadio);
 }
 
 void SimpleArcadesMusicManager::onGameReturned()
 {
+	pid_t pidToResume = -1;
+	pid_t pidToKill = -1;
+	bool killIsRadio = false;
 	bool isSpotify = false;
+	bool radioSuspended = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
@@ -1018,13 +1169,29 @@ void SimpleArcadesMusicManager::onGameReturned()
 			return;
 
 		isSpotify = (mMode == "spotify");
-		mPausedForGame = false;
-		mRestartRequested = true; // keep index; just start again
-		mCv.notify_all();
+		mInGameplay = false;
+
+		if (mPid > 0 && mMode == "radio" && mPausedForGame)
+		{
+			// Radio was suspended — just resume it. No kill, no VCHI
+			// channel close/open, no firmware deadlock risk.
+			pidToResume = static_cast<pid_t>(mPid);
+			radioSuspended = true;
+			mPausedForGame = false;
+		}
+		else
+		{
+			// Normal (non-radio) path: respawn.
+			mPausedForGame = false;
+			mRestartRequested = true;
+			mCv.notify_all();
+		}
 	}
 
 	if (isSpotify)
 		resumeSpotifyService();
+	else if (pidToResume > 0)
+		saResumeMusicPid(pidToResume);
 }
 
 // --- Music v2: Screensaver hooks ---
@@ -1120,6 +1287,7 @@ TrackDisplayInfo SimpleArcadesMusicManager::consumeNewTrackInfo()
 bool SimpleArcadesMusicManager::rescanMusic()
 {
 	pid_t pidToKill = -1;
+	bool killIsRadio = false;
 
 	{
 		std::lock_guard<std::mutex> lock(mMutex);
@@ -1139,14 +1307,14 @@ bool SimpleArcadesMusicManager::rescanMusic()
 			mRestartRequested = false;
 
 			if (mPid > 0)
-				pidToKill = static_cast<pid_t>(mPid);
+				{ pidToKill = static_cast<pid_t>(mPid); killIsRadio = mIsRadioProcess; }
 		}
 
 		mCv.notify_all();
 	}
 
 	if (pidToKill > 0)
-		saKillMusicPid(pidToKill);
+		saKillMusicPid(pidToKill, killIsRadio);
 
 	return true;
 }
@@ -1444,8 +1612,10 @@ void SimpleArcadesMusicManager::threadMain()
 					mIndex = 0;
 
 				const std::string& track = mPlaylist[mIndex];
-				const pid_t pid = saSpawnMpg123(track, mVolumePercent);
+				const int vol = (mInGameplay && mPlayDuringGameplay) ? mGameplayVolume : mVolumePercent;
+				const pid_t pid = saSpawnMpg123(track, vol);
 				mPid = static_cast<int>(pid);
+				mIsRadioProcess = (mMode == "radio");
 
 				// Set new track info for popup display.
 				if (mMode == "radio")
@@ -1459,7 +1629,11 @@ void SimpleArcadesMusicManager::threadMain()
 					mNewTrackSoundtrack = "Internet Radio";
 					mNewTrackName       = stationName;
 					mNewTrackCoverPath  = saFindRadioCoverArt(stationName);
-					mNewTrackFlag       = true;
+					// NOTE: Do NOT set mNewTrackFlag here for radio.
+					// The popup must be delayed until the audio stream is
+					// established, otherwise the popup render + audio VCHI
+					// open can deadlock the Pi 4 VideoCore firmware.
+					// Flag is set after the lock is released below.
 					mRadioIndex = mIndex;
 				}
 				else
@@ -1476,6 +1650,26 @@ void SimpleArcadesMusicManager::threadMain()
 			}
 
 			pidToWait = static_cast<pid_t>(mPid);
+		}
+
+		// For radio: delay the popup until the stream is established.
+		// This avoids the Pi 4 VCHI firmware deadlock where popup
+		// rendering + audio stream init collide.
+		{
+			bool radioNeedsPopup = false;
+			{
+				std::lock_guard<std::mutex> lock(mMutex);
+				radioNeedsPopup = (mMode == "radio" && !mNewTrackFlag
+					&& !mNewTrackName.empty() && pidToWait > 0 && !mStopThread);
+			}
+			if (radioNeedsPopup)
+			{
+				// Wait 5 seconds for the stream to fully establish.
+				std::this_thread::sleep_for(std::chrono::seconds(5));
+				std::lock_guard<std::mutex> lock(mMutex);
+				if (!mStopThread && mEnabled && mMode == "radio" && mPid > 0)
+					mNewTrackFlag = true;
+			}
 		}
 
 		// Wait for the mpg123 child to exit.

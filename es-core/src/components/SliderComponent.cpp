@@ -11,6 +11,8 @@ SliderComponent::SliderComponent(Window* window, float min, float max, float inc
 {
 	assert((min - max) != 0);
 
+	mFloor = mMin;
+
 	// some sane default value
 	mValue = (max + min) / 2;
 
@@ -83,12 +85,19 @@ void SliderComponent::render(const Transform4x4f& parentTrans)
 void SliderComponent::setValue(float value)
 {
 	mValue = value;
-	if(mValue < mMin)
-		mValue = mMin;
+	if(mValue < mFloor)
+		mValue = mFloor;
 	else if(mValue > mMax)
 		mValue = mMax;
 
 	onValueChanged();
+}
+
+void SliderComponent::setFloor(float floor)
+{
+	mFloor = floor;
+	if(mValue < mFloor)
+		setValue(mFloor);
 }
 
 float SliderComponent::getValue()
@@ -132,7 +141,7 @@ void SliderComponent::onValueChanged()
 	// update knob position/size
 	mKnob.setResize(0, mSize.y() * 0.7f);
 	float lineLength = mSize.x() - mKnob.getSize().x() - (mValueCache ? mValueCache->metrics.size.x() + 4 : 0);
-	mKnob.setPosition(((mValue + mMin) / mMax) * lineLength + mKnob.getSize().x()/2, mSize.y() / 2);
+	mKnob.setPosition(((mValue - mMin) / (mMax - mMin)) * lineLength + mKnob.getSize().x()/2, mSize.y() / 2);
 }
 
 std::vector<HelpPrompt> SliderComponent::getHelpPrompts()

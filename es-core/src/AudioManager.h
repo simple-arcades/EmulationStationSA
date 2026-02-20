@@ -110,6 +110,8 @@ public:
 	// Called by the game launcher hooks.
 	void onGameLaunched();
 	void onGameReturned();
+	void startGameplayMusic();  // call after launch video, before game starts
+	void stopGameplayMusic();   // call after game exits, before exit video
 
 	// --- Music v2 additions ---
 
@@ -191,6 +193,7 @@ private:
 	std::string                     mFolder;
 
 	bool                            mPausedForGame;
+	bool                            mInGameplay;  // true between onGameLaunched/onGameReturned
 	bool                            mPausedForScreensaver;
 	bool                            mPlayDuringScreensaver;
 	bool                            mShowTrackPopup;
@@ -201,6 +204,7 @@ private:
 	std::vector<std::string>        mPlaylist;
 	int                             mIndex;
 	int                             mPid; // child pid, or -1
+	bool                            mIsRadioProcess; // true if mPid is streaming radio
 
 	// Track popup: set by worker thread, consumed by UI poll.
 	bool                            mNewTrackFlag;
