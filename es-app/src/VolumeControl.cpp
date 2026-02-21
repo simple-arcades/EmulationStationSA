@@ -119,7 +119,7 @@ void VolumeControl::init()
 						}
 						else
 						{
-							LOG(LogError) << "VolumeControl::init() - Failed to find mixer elements!";
+							LOG(LogInfo) << "VolumeControl::init() - No mixer elements found (HDMI audio has no software mixer)";
 							snd_mixer_close(mixerHandle);
 							mixerHandle = nullptr;
 						}
