@@ -22,7 +22,7 @@
 // Systems that cannot be hidden
 static bool isProtectedSystem(const std::string& name)
 {
-	return (name == "savestates" || name == "retropie" || name == "settings");
+	return (name == "savestates" || name == "settings");
 }
 
 // ============================================================================

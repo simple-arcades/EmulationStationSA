@@ -17,7 +17,7 @@
 // Systems to exclude from the override list
 static bool isExcludedSystem(const std::string& name)
 {
-	return (name == "savestates" || name == "retropie" || name == "settings");
+	return (name == "savestates" || name == "settings");
 }
 
 // ============================================================================

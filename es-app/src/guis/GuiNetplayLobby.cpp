@@ -335,7 +335,7 @@ void GuiNetplayLobby::loadCRCDatabase()
 
 	for (auto* sys : systems)
 	{
-		if (sys->getName() == "retropie" || sys->getName() == "savestates")
+		if (sys->getName() == "settings" || sys->getName() == "savestates")
 			continue;
 
 		std::string crcPath = sys->getRootFolder()->getPath() + "/.netplay_crc";
@@ -418,7 +418,7 @@ bool GuiNetplayLobby::findLocalMatch(LobbySession& session)
 
 	for (auto* sys : systems)
 	{
-		if (sys->getName() == "retropie" || sys->getName() == "savestates")
+		if (sys->getName() == "settings" || sys->getName() == "savestates")
 			continue;
 
 		// Get the game list root

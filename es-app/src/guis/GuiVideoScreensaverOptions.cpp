@@ -114,7 +114,7 @@ void GuiVideoScreensaverOptions::save()
 	if (startingStatusNotRisky && endStatusRisky) {
 		// if before it wasn't risky but now there's a risk of problems, show warning
 		mWindow->pushGui(new GuiMsgBox(mWindow,
-		"Using OMX Player and displaying Game Info may result in the video flickering in some TV modes. If that happens, consider:\n\n• Disabling the \"Show Game Info\" option;\n• Disabling \"Overscan\" on the Pi configuration menu might help:\nRetroPie > Raspi-Config > Advanced Options > Overscan > \"No\".\n• Disabling the use of OMX Player for the screensaver.",
+		"Using OMX Player and displaying Game Info may result in the video flickering in some TV modes. If that happens, consider:\n\n• Disabling the \"Show Game Info\" option;\n• Disabling \"Overscan\" on the Pi configuration menu might help:\nSettings > Raspi-Config > Advanced Options > Overscan > \"No\".\n• Disabling the use of OMX Player for the screensaver.",
 			"GOT IT!", [] { return; }));
 	}
 #endif

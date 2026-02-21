@@ -96,7 +96,7 @@ GuiGamelistOptions::GuiGamelistOptions(Window* window, SystemData* system) : Gui
 		// add launch system screensaver
 		std::string screensaver_behavior = Settings::getInstance()->getString("ScreenSaverBehavior");
 		bool useGamelistMedia = screensaver_behavior == "random video" || (screensaver_behavior == "slideshow" && !Settings::getInstance()->getBool("SlideshowScreenSaverCustomMediaSource"));
-		bool rpConfigSelected = "retropie" == mSystem->getName();
+		bool rpConfigSelected = "settings" == mSystem->getName();
 		bool collectionsSelected = mSystem->getName() == CollectionSystemManager::get()->getCustomCollectionsBundle()->getName();
 
 		if (!rpConfigSelected && useGamelistMedia && (!collectionsSelected || collectionsSelected && file->getType() == GAME)) {
@@ -191,7 +191,7 @@ GuiGamelistOptions::GuiGamelistOptions(Window* window, SystemData* system) : Gui
 	//  Visible in kiosk mode (no isUIModeFull() gating).
 	// ====================================================================
 	if (!mFromPlaceholder && mSystem->getName() != "savestates"
-		&& mSystem->getName() != "retropie" && file->getType() == GAME)
+		&& mSystem->getName() != "settings" && file->getType() == GAME)
 	{
 		if (NetplayCore::isGameNetplayCompatible(file))
 		{
@@ -213,7 +213,7 @@ GuiGamelistOptions::GuiGamelistOptions(Window* window, SystemData* system) : Gui
 	// ====================================================================
 	// ====================================================================
 	if (!mFromPlaceholder && mSystem->getName() != "savestates"
-		&& mSystem->getName() != "retropie" && file->getType() == GAME)
+		&& mSystem->getName() != "settings" && file->getType() == GAME)
 	{
 		std::string currentRomPath = file->getPath();
 		std::vector<SaveStateDeleteHelper::SaveEntryInfo> saves =

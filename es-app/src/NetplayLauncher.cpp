@@ -202,7 +202,7 @@ std::string NetplayLauncher::buildCommand(const NetplayGameInfo& info,
 	//       --nick "$nick" \
 	//       >/dev/null 2>&1
 
-	std::string cmd = "/opt/retropie/emulators/retroarch/bin/retroarch";
+	std::string cmd = "/opt/simplearcades/retroarch/bin/retroarch";
 	cmd += " --verbose";
 	cmd += " --log-file \"" + getLogPath() + "\"";
 	cmd += " -L \"" + info.corePath + "\"";

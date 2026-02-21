@@ -64,10 +64,10 @@ SystemData::~SystemData()
 
 void SystemData::setIsGameSystemStatus()
 {
-	// we exclude non-game systems from specific operations (i.e. the "RetroPie" system, at least)
+	// we exclude non-game systems from specific operations (i.e. the "settings" system, at least)
 	// if/when there are more in the future, maybe this can be a more complex method, with a proper list
 	// but for now a simple string comparison is more performant
-	mIsGameSystem = (mName != "retropie");
+	mIsGameSystem = (mName != "settings");
 }
 
 void SystemData::populateFolder(FileData* folder)

@@ -66,7 +66,7 @@ const std::map<std::string, NetplaySafety>& NetplayCore::getCoreWhitelist()
 // ============================================================================
 //  getDefaultEmulatorInfo
 //
-//  Reads /opt/retropie/configs/<systemName>/emulators.cfg to find:
+//  Reads /home/pi/simplearcades/config/retroarch/systems/<systemName>.cfg to find:
 //  1. The "default" emulator name
 //  2. That emulator's launch command
 //  3. Extracts the core path (-L ...) and config path (--config ...)
@@ -78,7 +78,7 @@ bool NetplayCore::getDefaultEmulatorInfo(const std::string& systemName,
                                           std::string& corePath,
                                           std::string& configPath)
 {
-	std::string cfgPath = "/opt/retropie/configs/" + systemName + "/emulators.cfg";
+	std::string cfgPath = "/home/pi/simplearcades/config/retroarch/systems/" + systemName + ".cfg";
 
 	if (!Utils::FileSystem::exists(cfgPath))
 	{
@@ -157,7 +157,7 @@ bool NetplayCore::getDefaultEmulatorInfo(const std::string& systemName,
 	if (cPos == std::string::npos)
 	{
 		// Fallback: construct from system name
-		configPath = "/opt/retropie/configs/" + systemName + "/retroarch.cfg";
+		configPath = "/home/pi/simplearcades/config/retroarch/systems/" + systemName + ".cfg";
 	}
 	else
 	{
@@ -175,7 +175,7 @@ bool NetplayCore::getDefaultEmulatorInfo(const std::string& systemName,
 //  extractCoreFilename
 //
 //  Given a full path like:
-//    /opt/retropie/libretrocores/lr-fceumm/fceumm_libretro.so
+//    /opt/simplearcades/cores/nes/fceumm_libretro.so
 //  Returns: fceumm_libretro.so
 //
 //  Also handles just a filename, or a lobby's "core_name" field
@@ -209,7 +209,7 @@ bool NetplayCore::isGameNetplayCompatible(FileData* game)
 	std::string systemName = game->getSystem()->getName();
 
 	// Skip non-game systems
-	if (systemName == "retropie" || systemName == "savestates")
+	if (systemName == "settings" || systemName == "savestates")
 		return false;
 
 	// Get the default core for this system

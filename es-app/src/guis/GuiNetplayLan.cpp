@@ -265,7 +265,7 @@ bool GuiNetplayLan::findLocalMatch(LanSession& session)
 		// The host sends their ES system name (e.g. "snes", "snesLG")
 		// We should also check the base system if names differ
 		std::string sysName = sys->getName();
-		if (sysName == "retropie" || sysName == "savestates")
+		if (sysName == "settings" || sysName == "savestates")
 			continue;
 
 		// Match if same system name, or one is an LG variant of the other

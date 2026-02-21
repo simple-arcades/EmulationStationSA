@@ -30,8 +30,8 @@ enum class NetplaySafety
 
 struct NetplayGameInfo
 {
-	std::string corePath;    // e.g. "/opt/retropie/libretrocores/lr-fceumm/fceumm_libretro.so"
-	std::string configPath;  // e.g. "/opt/retropie/configs/nes/retroarch.cfg"
+	std::string corePath;    // e.g. "/opt/simplearcades/cores/nes/fceumm_libretro.so"
+	std::string configPath;  // e.g. "/home/pi/simplearcades/config/retroarch/systems/nes.cfg"
 	std::string romPath;     // Full path to the ROM
 	std::string systemName;  // e.g. "nes"
 	NetplaySafety safety;    // OPEN, STRICT, or NONE

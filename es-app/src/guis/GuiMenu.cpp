@@ -231,7 +231,7 @@ namespace
 		if (deviceName.empty())
 			return;
 
-		const std::string root = "/opt/retropie/configs/all/retroarch/autoconfig";
+		const std::string root = "/home/pi/simplearcades/config/retroarch/autoconfig";
 		if (!Utils::FileSystem::exists(root))
 			return;
 
@@ -1220,7 +1220,7 @@ void GuiMenu::openInputSettings()
 			SimpleArcadesMusicManager::getInstance().onGameLaunched();
 
 			std::string testerPath = Utils::FileSystem::getHomePath() +
-				"/RetroPie/roms/tools/control_tester.py";
+				"/simplearcades/scripts/control_tester.py";
 			std::string cmd = "python3 \"" + testerPath + "\" >/dev/null 2>&1";
 			runSystemCommand(cmd);
 
@@ -1311,7 +1311,7 @@ void GuiMenu::launchExternalScript(Window* window, const std::string& scriptPath
 
 	// Build command with joy2key wrapper for controller support in dialog/whiptail
 	// joy2key maps joystick to keyboard so shell script menus work with arcade controls
-	std::string joy2keyBin = "/opt/retropie/admin/joy2key/joy2key";
+	std::string joy2keyBin = "/opt/simplearcades/tools/joy2key";
 	std::string scriptCmd;
 	if (needsSudo)
 		scriptCmd = "sudo bash \"" + scriptPath + "\"";
@@ -1329,17 +1329,8 @@ void GuiMenu::launchExternalScript(Window* window, const std::string& scriptPath
 	}
 	else
 	{
-		// Fallback: use retropie_packages.sh launch if joy2key not found directly
-		std::string rpLauncher = "/home/pi/RetroPie-Setup/retropie_packages.sh";
-		if (access(rpLauncher.c_str(), F_OK) == 0)
-		{
-			cmd = "sudo " + rpLauncher + " retropiemenu launch \"" + scriptPath + "\" </dev/tty >/dev/tty";
-		}
-		else
-		{
-			// Last resort: run without controller support
-			cmd = scriptCmd + " </dev/tty >/dev/tty";
-		}
+		// Fallback: run without controller support
+		 cmd = scriptCmd + " </dev/tty >/dev/tty";
 	}
 
 	runSystemCommand(cmd);
@@ -1681,7 +1672,7 @@ void GuiMenu::openFactoryUI()
 	systemfocus_list->add("NONE", "", Settings::getInstance()->getString("StartupSystem") == "");
 	for (auto it = SystemData::sSystemVector.cbegin(); it != SystemData::sSystemVector.cend(); it++)
 	{
-		if ("retropie" != (*it)->getName())
+		if ("settings" != (*it)->getName())
 			systemfocus_list->add((*it)->getName(), (*it)->getName(), Settings::getInstance()->getString("StartupSystem") == (*it)->getName());
 	}
 	s->addWithLabel("START ON SYSTEM", systemfocus_list);

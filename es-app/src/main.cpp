@@ -235,7 +235,7 @@ bool parseArgs(int argc, char* argv[])
 				"Note: Switches marked (p) will be persisted in es_settings.cfg when any\n"
 				"setting is changed via EmulationStation UI.\n\n"
 				"Please refer to the online documentation for additional information:\n"
-				"https://retropie.org.uk/docs/EmulationStation/\n";
+				"https://github.com/simple-arcades/EmulationStationSA\n";
 			return false; //exit after printing help
 		}
 	}

@@ -186,10 +186,10 @@ void CollectionSystemManager::updateSystemsList()
 		// sort custom individual systems with other systems
 		std::sort(SystemData::sSystemVector.begin(), SystemData::sSystemVector.end(), systemSort);
 
-		// move RetroPie system to end, before auto collections
+		// move settings system to end, before auto collections
 		for(auto sysIt = SystemData::sSystemVector.cbegin(); sysIt != SystemData::sSystemVector.cend(); )
 		{
-			if ((*sysIt)->getName() == "retropie")
+			if ((*sysIt)->getName() == "settings")
 			{
 				SystemData* retroPieSystem = (*sysIt);
 				sysIt = SystemData::sSystemVector.erase(sysIt);

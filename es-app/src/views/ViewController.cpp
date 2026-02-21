@@ -51,7 +51,7 @@ void ViewController::goToStart()
 {
 	// If specific system is requested, go directly to the game list
 	auto requestedSystem = Settings::getInstance()->getString("StartupSystem");
-	if("" != requestedSystem && "retropie" != requestedSystem)
+	if("" != requestedSystem && "settings" != requestedSystem)
 	{
 		for(auto it = SystemData::sSystemVector.cbegin(); it != SystemData::sSystemVector.cend(); it++){
 			if ((*it)->getName() == requestedSystem)

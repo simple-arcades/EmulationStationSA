@@ -23,8 +23,8 @@
 //
 //  The .metadata file is a simple text file with lines like:
 //    CORE=mgba_libretro.so
-//    CONFIG=/opt/retropie/configs/all/retroarch.cfg
-//    ROM=/home/pi/RetroPie/roms/snes/Super Mario World (USA).sfc
+//    CONFIG=/home/pi/simplearcades/config/retroarch/retroarch.cfg
+//    ROM=/home/pi/simplearcades/roms/snes/Super Mario World (USA).sfc
 //    SYSTEM=snes
 //
 //  We only strictly require ROM= but parse all fields for completeness.
@@ -94,11 +94,11 @@ bool SaveStateDeleteHelper::deleteWatcherFiles(const std::string& entryPath)
 	bool success = true;
 
 	// The .entry file path looks like:
-	//   /home/pi/RetroPie/roms/savestates/GameName.state1.entry
+	//   /home/pi/simplearcades/data/save_states/GameName.state1.entry
 	// The raw state file is the same without ".entry":
-	//   /home/pi/RetroPie/roms/savestates/GameName.state1
+	//   /home/pi/simplearcades/data/save_states/GameName.state1
 	// The metadata file adds ".metadata":
-	//   /home/pi/RetroPie/roms/savestates/GameName.state1.metadata
+	//   /home/pi/simplearcades/data/save_states/GameName.state1.metadata
 
 	// Derive the base path (without .entry extension)
 	std::string basePath;
@@ -365,7 +365,7 @@ bool SaveStateDeleteHelper::isLastSaveForRom(const std::string& savestatesDir,
 std::vector<SaveStateDeleteHelper::SaveEntryInfo> SaveStateDeleteHelper::findSavesForRom(const std::string& romPath)
 {
 	std::vector<SaveEntryInfo> results;
-	const std::string savestatesDir = "/home/pi/RetroPie/roms/savestates";
+	const std::string savestatesDir = "/home/pi/simplearcades/data/save_states";
 	const std::string gamelistPath = savestatesDir + "/gamelist.xml";
 
 	if (!Utils::FileSystem::exists(savestatesDir))

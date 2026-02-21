@@ -22,7 +22,7 @@ class Window;
 class GuiSavedGames : public GuiComponent
 {
 public:
-	// romPath: full path to the source ROM (e.g. /home/pi/RetroPie/roms/snes/Super Mario World.sfc)
+	// romPath: full path to the source ROM (e.g. /home/pi/simplearcades/roms/snes/Super Mario World.sfc)
 	// romName: display name of the ROM (e.g. "Super Mario World [US]")
 	GuiSavedGames(Window* window, const std::string& romPath, const std::string& romName);
 
