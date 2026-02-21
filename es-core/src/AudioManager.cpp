@@ -112,7 +112,7 @@ void AudioManager::init()
 
 	//Open the audio device and pause
 	if (SDL_OpenAudio(&sAudioFormat, NULL) < 0) {
-		LOG(LogError) << "AudioManager Error - Unable to open SDL audio: " << SDL_GetError() << std::endl;
+		LOG(LogDebug) << "AudioManager: SDL audio unavailable (expected during game launch): " << SDL_GetError();
 	}
 }
 
