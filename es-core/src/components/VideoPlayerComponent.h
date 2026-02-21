@@ -1,4 +1,4 @@
-#ifdef _OMX_
+#if defined(_OMX_) || defined(_MPV_PLAYER_)
 #pragma once
 #ifndef ES_CORE_COMPONENTS_VIDEO_PLAYER_COMPONENT_H
 #define ES_CORE_COMPONENTS_VIDEO_PLAYER_COMPONENT_H

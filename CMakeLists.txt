@@ -118,11 +118,10 @@ endif()
 if(DEFINED BCMHOST OR RPI)
     add_definitions(-D_RPI_)
 endif()
-
 if(OMX)
     add_definitions(-D_OMX_)
 endif()
-
+add_definitions(-D_MPV_PLAYER_)
 if(DEFINED libCEC_FOUND)
     add_definitions(-DHAVE_LIBCEC)
 endif()

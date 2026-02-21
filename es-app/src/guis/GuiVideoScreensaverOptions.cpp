@@ -24,7 +24,7 @@ GuiVideoScreensaverOptions::GuiVideoScreensaverOptions(Window* window, const cha
 	addWithLabel("STRETCH VIDEO ON SCREENSAVER", stretch_screensaver);
 	addSaveFunc([stretch_screensaver] { Settings::getInstance()->setBool("StretchVideoOnScreenSaver", stretch_screensaver->getState()); });
 
-#ifdef _OMX_
+#if defined(_OMX_) || defined(_MPV_PLAYER_)
 	auto ss_omx = std::make_shared<SwitchComponent>(mWindow);
 	ss_omx->setState(Settings::getInstance()->getBool("ScreenSaverOmxPlayer"));
 	addWithLabel("USE OMX PLAYER FOR SCREENSAVER", ss_omx);
@@ -60,7 +60,7 @@ GuiVideoScreensaverOptions::GuiVideoScreensaverOptions(Window* window, const cha
 	addWithLabel("VLC: SCREENSAVER VIDEO RESOLUTION", ss_vlc_resolution);
 	addSaveFunc([ss_vlc_resolution, this] { Settings::getInstance()->setString("VlcScreenSaverResolution", ss_vlc_resolution->getSelected()); });
 
-#ifdef _OMX_
+#if defined(_OMX_) || defined(_MPV_PLAYER_)
 	ComponentListRow row;
 
 	// Set subtitle position
@@ -104,12 +104,12 @@ GuiVideoScreensaverOptions::~GuiVideoScreensaverOptions()
 
 void GuiVideoScreensaverOptions::save()
 {
-#ifdef _OMX_
+#if defined(_OMX_) || defined(_MPV_PLAYER_)
 	bool startingStatusNotRisky = (Settings::getInstance()->getString("ScreenSaverGameInfo") == "never" || !Settings::getInstance()->getBool("ScreenSaverOmxPlayer"));
 #endif
 	GuiScreensaverOptions::save();
 
-#ifdef _OMX_
+#if defined(_OMX_) || defined(_MPV_PLAYER_)
 	bool endStatusRisky = (Settings::getInstance()->getString("ScreenSaverGameInfo") != "never" && Settings::getInstance()->getBool("ScreenSaverOmxPlayer"));
 	if (startingStatusNotRisky && endStatusRisky) {
 		// if before it wasn't risky but now there's a risk of problems, show warning

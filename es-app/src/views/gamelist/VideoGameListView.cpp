@@ -2,13 +2,13 @@
 #include "SAStyle.h"
 
 #include "animations/LambdaAnimation.h"
-#ifdef _OMX_
+#if defined(_OMX_) || defined(_MPV_PLAYER_)
 #include "components/VideoPlayerComponent.h"
 #endif
 #include "components/VideoVlcComponent.h"
 #include "utils/FileSystemUtil.h"
 #include "views/ViewController.h"
-#ifdef _OMX_
+#if defined(_OMX_) || defined(_MPV_PLAYER_)
 #include "Settings.h"
 #endif
 
@@ -32,7 +32,7 @@ VideoGameListView::VideoGameListView(Window* window, FileData* root) :
 	const float padding = 0.01f;
 
 	// Create the correct type of video window
-#ifdef _OMX_
+#if defined(_OMX_) || defined(_MPV_PLAYER_)
 	Utils::FileSystem::removeFile(getTitlePath());
 	if (Settings::getInstance()->getBool("VideoOmxPlayer"))
 		mVideo = new VideoPlayerComponent(window, "");
