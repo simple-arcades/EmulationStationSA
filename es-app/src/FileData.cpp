@@ -284,7 +284,7 @@ void FileData::launchGame(Window* window)
 	VolumeControl::getInstance()->deinit();
 	InputManager::getInstance()->deinit();
 	window->deinit();
-	::system("setterm --cursor off >/dev/tty1 2>/dev/null; printf '\033[2J\033[H' >/dev/tty1 2>/dev/null");
+	::system("stty -F /dev/tty1 -echo 2>/dev/null; setterm --cursor off >/dev/tty1 2>/dev/null; printf '\033[2J\033[H' >/dev/tty1 2>/dev/null");
 
 	std::string command = mEnvData->mLaunchCommand;
 
@@ -316,7 +316,7 @@ void FileData::launchGame(Window* window)
 
 	Scripting::fireEvent("game-end");
 
-	::system("setterm --cursor on >/dev/tty1 2>/dev/null");
+	::system("stty -F /dev/tty1 echo 2>/dev/null; setterm --cursor on >/dev/tty1 2>/dev/null");
 	// Exit video has finished — now restore normal music.
 	SimpleArcadesMusicManager::getInstance().onGameReturned();
 
