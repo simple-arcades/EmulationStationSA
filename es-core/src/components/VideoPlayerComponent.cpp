@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <wait.h>
+#include <dirent.h>
 
 class VolumeControl
 {
@@ -57,6 +58,34 @@ void VideoPlayerComponent::setMaxSize(float width, float height)
 	onSizeChanged();
 }
 
+/* Find the DRM card fd in our own process */
+static int find_drm_fd(void)
+{
+	DIR *dir = opendir("/proc/self/fd");
+	if (!dir) return -1;
+
+	struct dirent *ent;
+	while ((ent = readdir(dir)) != NULL) {
+		if (ent->d_name[0] == '.') continue;
+		int fd = atoi(ent->d_name);
+		if (fd <= 2) continue;
+
+		char link[256];
+		char path[64];
+		snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
+		ssize_t len = readlink(path, link, sizeof(link) - 1);
+		if (len < 0) continue;
+		link[len] = '\0';
+
+		if (strstr(link, "/dev/dri/card") != NULL) {
+			closedir(dir);
+			return fd;
+		}
+	}
+	closedir(dir);
+	return -1;
+}
+
 void VideoPlayerComponent::startVideo()
 {
 	if (!mIsPlaying)
@@ -66,43 +95,68 @@ void VideoPlayerComponent::startVideo()
 
 		std::string path(mVideoPath.c_str());
 
-		// Make sure we have a video path
 		if ((path.size() > 0) && (mPlayerPid == -1))
 		{
-			// Set the video that we are going to be playing so we don't attempt to restart it
 			mPlayingVideoPath = mVideoPath;
 
-			// Start the player process
+			/* Find the DRM fd before forking */
+			int drm_fd = find_drm_fd();
+			char drm_fd_str[16];
+			snprintf(drm_fd_str, sizeof(drm_fd_str), "%d", drm_fd);
+
 			pid_t pid = fork();
 			if (pid == -1)
 			{
-				// Failed
 				mPlayingVideoPath = "";
 			}
 			else if (pid > 0)
 			{
 				mPlayerPid = pid;
-				// Update the playing state
 				signal(SIGCHLD, catch_child);
 				mIsPlaying = true;
 				mFadeIn = 0.0f;
 			}
 			else
 			{
-				// Child process - launch mpv as external video player
+				/* Child process - launch sa_videoplayer */
 
-				// Check if we want to mute the audio
 				bool mute = (!Settings::getInstance()->getBool("VideoAudio") ||
 					(float)VolumeControl::getInstance()->getVolume() == 0) ||
 					(Settings::getInstance()->getBool("ScreenSaverVideoMute") && mScreensaverMode);
 
-				// Redirect stdout/stderr to /dev/null
+				/* Redirect stdout/stderr to /dev/null */
 				int fdin = open("/dev/null", O_RDONLY);
 				int fdout = open("/dev/null", O_WRONLY);
 				dup2(fdin, 0);
 				dup2(fdout, 1);
 				dup2(fdout, 2);
 
+				if (drm_fd >= 0)
+				{
+					if (mute)
+					{
+						execlp("/opt/simplearcades/tools/sa_videoplayer",
+							"sa_videoplayer",
+							"--drm-fd", drm_fd_str,
+							"--loop",
+							"--no-audio",
+							"--layer", "10",
+							mPlayingVideoPath.c_str(),
+							(char*)NULL);
+					}
+					else
+					{
+						execlp("/opt/simplearcades/tools/sa_videoplayer",
+							"sa_videoplayer",
+							"--drm-fd", drm_fd_str,
+							"--loop",
+							"--layer", "10",
+							mPlayingVideoPath.c_str(),
+							(char*)NULL);
+					}
+				}
+
+				/* Fallback to mpv if sa_videoplayer not available */
 				if (mute)
 				{
 					execlp("mpv", "mpv",
@@ -155,7 +209,6 @@ void VideoPlayerComponent::stopVideo()
 	mIsPlaying = false;
 	mStartDelayed = false;
 
-	// Stop the player process
 	if (mPlayerPid != -1)
 	{
 		int status;
