@@ -9,8 +9,8 @@
 #include <unistd.h>
 #include <wait.h>
 #include <dirent.h>
-#include <libdrm/xf86drm.h>
-#include <libdrm/xf86drmMode.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
 
 class VolumeControl
 {

@@ -101,6 +101,7 @@ find_package(FreeImage REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(CURL REQUIRED)
 find_package(VLC REQUIRED)
+pkg_check_modules(LIBDRM libdrm)
 find_package(RapidJSON REQUIRED)
 
 #add libCEC support
@@ -182,6 +183,7 @@ set(COMMON_INCLUDE_DIRS
     ${SDL2_INCLUDE_DIRS}
     ${CURL_INCLUDE_DIR}
     ${VLC_INCLUDE_DIR}
+    ${LIBDRM_INCLUDE_DIRS}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/external
     ${CMAKE_CURRENT_SOURCE_DIR}/es-core/src
@@ -220,6 +222,7 @@ set(COMMON_LIBRARIES
     ${SDL2_LIBRARIES}
     ${CURL_LIBRARIES}
     ${VLC_LIBRARIES}
+    ${LIBDRM_LIBRARIES}
     pugixml
     nanosvg
 )
