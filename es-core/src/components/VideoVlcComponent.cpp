@@ -198,8 +198,8 @@ void VideoVlcComponent::setupVLC(std::string subtitles)
 	if (!mVLC)
 	{
 		const char** args;
-		const char* newargs[] = { "--quiet", "--sub-file", subtitles.c_str() };
-		const char* singleargs[] = { "--quiet" };
+		const char* newargs[] = { "--quiet", "--codec=avcodec,all", "--avcodec-hw=any", "--sub-file", subtitles.c_str() };
+		const char* singleargs[] = { "--quiet", "--codec=avcodec,all", "--avcodec-hw=any" };
 		int argslen = 0;
 
 		if (!subtitles.empty())
