@@ -451,7 +451,7 @@ std::string SystemData::getConfigPath(bool forWrite)
 	if(forWrite || Utils::FileSystem::exists(path))
 		return path;
 
-	return "/etc/emulationstation/es_systems.cfg";
+	return "/home/pi/simplearcades/config/emulationstation/es_systems.cfg";
 }
 
 bool SystemData::isVisible()
@@ -503,7 +503,7 @@ std::string SystemData::getGamelistPath(bool forWrite) const
 	if(forWrite || Utils::FileSystem::exists(filePath))
 		return filePath;
 
-	return "/etc/emulationstation/gamelists/" + mName + "/gamelist.xml";
+	return "/home/pi/simplearcades/config/emulationstation/gamelists/" + mName + "/gamelist.xml";
 }
 
 std::string SystemData::getThemePath() const
