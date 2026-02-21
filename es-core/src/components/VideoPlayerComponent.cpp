@@ -101,8 +101,6 @@ void VideoPlayerComponent::startVideo()
 
 			/* Find the DRM fd before forking */
 			int drm_fd = find_drm_fd();
-			char drm_fd_str[16];
-			snprintf(drm_fd_str, sizeof(drm_fd_str), "%d", drm_fd);
 
 			pid_t pid = fork();
 			if (pid == -1)
@@ -120,6 +118,15 @@ void VideoPlayerComponent::startVideo()
 			{
 				/* Child process - launch sa_videoplayer */
 
+				/* IMPORTANT: Save DRM fd to a high number BEFORE
+				 * any open/dup2 calls that might clobber it */
+				int safe_drm_fd = -1;
+				if (drm_fd >= 0) {
+					safe_drm_fd = fcntl(drm_fd, F_DUPFD, 100); /* dup to fd >= 100 */
+				}
+				char drm_fd_str2[16];
+				snprintf(drm_fd_str2, sizeof(drm_fd_str2), "%d", safe_drm_fd);
+
 				bool mute = (!Settings::getInstance()->getBool("VideoAudio") ||
 					(float)VolumeControl::getInstance()->getVolume() == 0) ||
 					(Settings::getInstance()->getBool("ScreenSaverVideoMute") && mScreensaverMode);
@@ -131,13 +138,13 @@ void VideoPlayerComponent::startVideo()
 				dup2(fdout, 1);
 				dup2(fdout, 2);
 
-				if (drm_fd >= 0)
+				if (safe_drm_fd >= 0)
 				{
 					if (mute)
 					{
 						execlp("/opt/simplearcades/tools/sa_videoplayer",
 							"sa_videoplayer",
-							"--drm-fd", drm_fd_str,
+							"--drm-fd", drm_fd_str2,
 							"--loop",
 							"--no-audio",
 							"--layer", "10",
@@ -148,41 +155,12 @@ void VideoPlayerComponent::startVideo()
 					{
 						execlp("/opt/simplearcades/tools/sa_videoplayer",
 							"sa_videoplayer",
-							"--drm-fd", drm_fd_str,
+							"--drm-fd", drm_fd_str2,
 							"--loop",
 							"--layer", "10",
 							mPlayingVideoPath.c_str(),
 							(char*)NULL);
 					}
-				}
-
-				/* Fallback to mpv if sa_videoplayer not available */
-				if (mute)
-				{
-					execlp("mpv", "mpv",
-						"--fullscreen",
-						"--no-input-terminal",
-						"--really-quiet",
-						"--loop",
-						"--no-osd-bar",
-						"--hwdec=auto",
-						"--vo=gpu",
-						"--no-audio",
-						mPlayingVideoPath.c_str(),
-						(char*)NULL);
-				}
-				else
-				{
-					execlp("mpv", "mpv",
-						"--fullscreen",
-						"--no-input-terminal",
-						"--really-quiet",
-						"--loop",
-						"--no-osd-bar",
-						"--hwdec=auto",
-						"--vo=gpu",
-						mPlayingVideoPath.c_str(),
-						(char*)NULL);
 				}
 
 				_exit(EXIT_FAILURE);
