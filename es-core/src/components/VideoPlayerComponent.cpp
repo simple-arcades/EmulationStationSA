@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <wait.h>
 #include <dirent.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
 
 class VolumeControl
 {
@@ -190,9 +192,42 @@ void VideoPlayerComponent::stopVideo()
 	if (mPlayerPid != -1)
 	{
 		int status;
+		kill(mPlayerPid, SIGTERM);
+		/* Give it a moment to clean up DRM overlay */
+		usleep(100000); /* 100ms */
 		kill(mPlayerPid, SIGKILL);
 		waitpid(mPlayerPid, &status, WNOHANG);
 		mPlayerPid = -1;
+	}
+
+	/* Clear any DRM overlay planes that might be left over */
+	int drm_fd = find_drm_fd();
+	if (drm_fd >= 0) {
+		drmSetClientCap(drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+		drmModePlaneResPtr planes = drmModeGetPlaneResources(drm_fd);
+		if (planes) {
+			for (unsigned i = 0; i < planes->count_planes; i++) {
+				drmModePlanePtr p = drmModeGetPlane(drm_fd, planes->planes[i]);
+				if (p && p->crtc_id != 0) {
+					drmModeObjectPropertiesPtr props = drmModeObjectGetProperties(
+						drm_fd, p->plane_id, DRM_MODE_OBJECT_PLANE);
+					if (props) {
+						for (unsigned j = 0; j < props->count_props; j++) {
+							drmModePropertyPtr prop = drmModeGetProperty(drm_fd, props->props[j]);
+							if (prop && strcmp(prop->name, "type") == 0 &&
+								props->prop_values[j] == DRM_PLANE_TYPE_OVERLAY) {
+								drmModeSetPlane(drm_fd, p->plane_id, 0, 0, 0,
+									0, 0, 0, 0, 0, 0, 0, 0);
+							}
+							if (prop) drmModeFreeProperty(prop);
+						}
+						drmModeFreeObjectProperties(props);
+					}
+				}
+				if (p) drmModeFreePlane(p);
+			}
+			drmModeFreePlaneResources(planes);
+		}
 	}
 }
 
